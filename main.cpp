@@ -16,8 +16,11 @@ enum TokenName
     PRINT,
     PRINTLN,
     IDENTIFIER,
+    NUM,
+    LITERAL,
     INTEGER,
-    CHAR
+    CHAR,
+    STRING
 };
 
 const string EMPTY_LEXEME = "^";
@@ -32,8 +35,11 @@ const map<TokenName, string> outputMapper = {
     {TokenName::PRINT, "PRINT"},
     {TokenName::PRINTLN, "PRINTLN"},
     {TokenName::IDENTIFIER, "ID"},
+    {TokenName::NUM, "NUM"},
     {TokenName::INTEGER, "INT"},
-    {TokenName::CHAR, "CHAR"}};
+    {TokenName::CHAR, "CHAR"},
+    {TokenName::LITERAL, "LITERAL"},
+    {TokenName::STRING, "STRING"}};
 
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
@@ -126,6 +132,148 @@ Token isIdentifierOrKeyword(ifstream &fileStream)
     }
 }
 
+Token isNumericLiteral(ifstream &fileStream)
+{
+    int state = 10;
+    string lexeme = "";
+    bool ended = false;
+    char c;
+
+    while (!ended)
+    {
+        switch (state)
+        {
+        case 10:
+            c = fileStream.peek();
+            if (isdigit(c))
+            {
+                lexeme += fileStream.get();
+                state = 11;
+            }
+            else
+            {
+                state = 12;
+            }
+            break;
+        case 11:
+            c = fileStream.peek();
+            if (isdigit(c))
+            {
+                lexeme += fileStream.get();
+            }
+            else
+            {
+                state = 12;
+            }
+        case 12:
+        default:
+            ended = true;
+            break;
+        }
+    }
+    return Token(TokenName::NUM, lexeme);
+}
+
+Token isCharacterLiteral(ifstream &fileStream)
+{
+    int state = 40;
+    string lexeme = "";
+    char c;
+
+    while (true)
+    {
+        switch (state)
+        {
+        case 40:
+            c = fileStream.peek();
+            if (c == '\'')
+            {
+                lexeme += fileStream.get();
+                state = 41;
+            }
+            else
+            {
+                state = -1;
+            }
+            break;
+        case 41:
+            c = fileStream.peek();
+            if (isalpha(c))
+            {
+                lexeme += fileStream.get();
+                state = 42;
+            }
+            else
+            {
+                state = -1;
+            }
+            break;
+        case 42:
+            c = fileStream.peek();
+            if (c == '\'')
+            {
+                lexeme += fileStream.get();
+                state = 43;
+            }
+            else
+            {
+                state = -1;
+            }
+            break;
+        case 43:
+        case 44:
+        default:
+            return Token(TokenName::LITERAL, lexeme);
+        }
+    }
+}
+
+Token isStringLiteral(ifstream &fileStream)
+{
+    int state = 50;
+    string lexeme = "";
+    char c;
+    while (true)
+    {
+        switch (state)
+        {
+        case 50:
+            c = fileStream.peek();
+            if (c == '"')
+            {
+                lexeme += fileStream.get();
+                state = 51;
+            }
+            else
+            {
+                state = -1;
+            }
+            break;
+        case 51:
+            c = fileStream.peek();
+            if (c == fileStream.eof())
+            {
+                state = -1;
+            }
+            else if (c == '"')
+            {
+                lexeme += fileStream.get();
+                state = 52;
+            }
+            else
+            {
+                lexeme += fileStream.get();
+            }
+            break;
+        case 52:
+        case 53:
+        default:
+            return Token(TokenName::STRING, lexeme);
+            break;
+        }
+    }
+}
+
 int main()
 {
     ifstream inFile;
@@ -145,6 +293,18 @@ int main()
         if (isalpha(c))
         {
             tokens.push_back(isIdentifierOrKeyword(inFile));
+        }
+        else if (isdigit(c))
+        {
+            tokens.push_back(isNumericLiteral(inFile));
+        }
+        else if (c == '\'')
+        {
+            tokens.push_back(isCharacterLiteral(inFile));
+        }
+        else if (c == '"')
+        {
+            tokens.push_back(isStringLiteral(inFile));
         }
         else
         {
