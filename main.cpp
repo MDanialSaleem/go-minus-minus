@@ -23,7 +23,21 @@ enum TokenName
     STRING,
     COMMENT,
     RO,
-    PLUS
+    PLUS,
+    MINUS,
+    DIVIDE,
+    PRODUCT,
+    OPEN_PARANTHESIS,
+    CLOSE_PARANTHESIS,
+    OPEN_BRACES,
+    CLOSE_BRACES,
+    OPEN_SQUARE_BRACKETS,
+    CLOSE_SQUARE_BRACKETS,
+    DECLARATION,
+    COMMA,
+    SEMI_COLON,
+    INPUT,
+    ASSIGNMENT
 };
 
 const string EMPTY_LEXEME = "^";
@@ -45,7 +59,22 @@ const map<TokenName, string> outputMapper = {
     {TokenName::STRING, "STRING"},
     {TokenName::COMMENT, "COMMENT"},
     {TokenName::RO, "RO"},
-    {TokenName::PLUS, "+"}};
+    {TokenName::PLUS, "'+'"},
+    {TokenName::MINUS, "'-'"},
+    {TokenName::DIVIDE, "'/'"},
+    {TokenName::PRODUCT, "'*'"},
+    {TokenName::OPEN_PARANTHESIS, "'('"},
+    {TokenName::CLOSE_PARANTHESIS, "')'"},
+    {TokenName::OPEN_BRACES, "'{'"},
+    {TokenName::CLOSE_BRACES, "'}"},
+    {TokenName::OPEN_SQUARE_BRACKETS,
+     "'['"},
+    {TokenName::CLOSE_SQUARE_BRACKETS, "']'"},
+    {TokenName::DECLARATION, "':'"},
+    {TokenName::COMMA, "','"},
+    {TokenName::SEMI_COLON, "';'"},
+    {TokenName::INPUT, ">>"},
+    {TokenName::ASSIGNMENT, ":="}};
 
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
@@ -65,7 +94,7 @@ class Token
     string lexeme;
 
 public:
-    Token(TokenName inToken, string inLexeme) : token(inToken), lexeme(inLexeme) {}
+    Token(TokenName inToken, string inLexeme = EMPTY_LEXEME) : token(inToken), lexeme(inLexeme) {}
 
     friend ostream &operator<<(ostream &out, const Token &token);
 };
@@ -280,7 +309,7 @@ Token isStringLiteral(ifstream &fileStream)
     }
 }
 
-Token isCommentOrSomeRO(ifstream &fileStream)
+Token isCommentOrNotEqOrDivide(ifstream &fileStream)
 {
     int state = 1;
     string lexeme = "";
@@ -314,7 +343,7 @@ Token isCommentOrSomeRO(ifstream &fileStream)
             }
             else
             {
-                return Token(TokenName::PLUS, EMPTY_LEXEME);
+                return Token(TokenName::DIVIDE);
             }
             break;
         case 3:
@@ -357,7 +386,7 @@ Token isCommentOrSomeRO(ifstream &fileStream)
     }
 }
 
-Token isRelationalOperator(ifstream &fileStream)
+Token isROorInput(ifstream &fileStream)
 {
     int state = 18;
     char c;
@@ -404,6 +433,11 @@ Token isRelationalOperator(ifstream &fileStream)
                 fileStream.get();
                 return Token(TokenName::RO, "GE");
             }
+            else if (c == '>')
+            {
+                fileStream.get();
+                return Token(TokenName::INPUT);
+            }
             else
             {
                 return Token(TokenName::RO, "GT");
@@ -414,6 +448,28 @@ Token isRelationalOperator(ifstream &fileStream)
             break;
         }
     }
+}
+
+Token isDeclarationOrAssignment(ifstream &fileStream)
+{
+    char c1 = fileStream.get();
+    char c2 = fileStream.peek();
+
+    if (c1 == ':' && c2 != '=')
+    {
+        return Token(TokenName::DECLARATION);
+    }
+    else
+    {
+        fileStream.get();
+        return Token(TokenName::ASSIGNMENT);
+    }
+}
+
+Token LexemeLessCreator(TokenName tokenName, ifstream &fileStream)
+{
+    fileStream.get();
+    return Token(tokenName);
 }
 int main()
 {
@@ -433,13 +489,53 @@ int main()
 
         switch (c)
         {
+        case ' ':
+        case '\n':
+            inFile.get();
+            break;
+        case '{':
+            tokens.push_back(LexemeLessCreator(TokenName::OPEN_BRACES, inFile));
+            break;
+        case '}':
+            tokens.push_back(LexemeLessCreator(TokenName::CLOSE_BRACES, inFile));
+            break;
+        case '(':
+            tokens.push_back(LexemeLessCreator(TokenName::OPEN_PARANTHESIS, inFile));
+            break;
+        case ')':
+            tokens.push_back(LexemeLessCreator(TokenName::CLOSE_PARANTHESIS, inFile));
+            break;
+        case '[':
+            tokens.push_back(LexemeLessCreator(TokenName::OPEN_SQUARE_BRACKETS, inFile));
+            break;
+        case ']':
+            tokens.push_back(LexemeLessCreator(TokenName::CLOSE_SQUARE_BRACKETS, inFile));
+            break;
+        case '+':
+            tokens.push_back(LexemeLessCreator(TokenName::PLUS, inFile));
+            break;
+        case '-':
+            tokens.push_back(LexemeLessCreator(TokenName::MINUS, inFile));
+            break;
+        case '*':
+            tokens.push_back(LexemeLessCreator(TokenName::PRODUCT, inFile));
+            break;
+        case '/':
+            tokens.push_back(isCommentOrNotEqOrDivide(inFile));
+            break;
+        case ':':
+            tokens.push_back(isDeclarationOrAssignment(inFile));
+            break;
+        case ',':
+            tokens.push_back(LexemeLessCreator(TokenName::COMMA, inFile));
+            break;
+        case ';':
+            tokens.push_back(LexemeLessCreator(TokenName::SEMI_COLON, inFile));
+            break;
         case '<':
         case '>':
         case '=':
-            tokens.push_back(isRelationalOperator(inFile));
-            break;
-        case '/':
-            tokens.push_back(isCommentOrSomeRO(inFile));
+            tokens.push_back(isROorInput(inFile));
             break;
         case '\'':
             tokens.push_back(isCharacterLiteral(inFile));
@@ -458,6 +554,7 @@ int main()
             }
             else
             {
+                cout << "Invalid Character: " << c << endl;
                 inFile.get();
             }
             break;
