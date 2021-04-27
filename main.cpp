@@ -5,6 +5,11 @@
 #include <map>
 using namespace std;
 
+const string EMPTY_LEXEME = "^";
+const string OUTPUT_FILE_NAME = "words.txt"; //BECUASE SIR SPECIFIED IT IN ASSIGNMENT.
+
+// On how state machines are represented:
+// They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
 enum TokenName
 {
     IF,
@@ -37,10 +42,9 @@ enum TokenName
     COMMA,
     SEMI_COLON,
     INPUT,
-    ASSIGNMENT
+    ASSIGNMENT,
+    INVALID
 };
-
-const string EMPTY_LEXEME = "^";
 
 const map<TokenName, string> outputMapper = {
     {TokenName::IF, "IF"},
@@ -74,7 +78,8 @@ const map<TokenName, string> outputMapper = {
     {TokenName::COMMA, "','"},
     {TokenName::SEMI_COLON, "';'"},
     {TokenName::INPUT, ">>"},
-    {TokenName::ASSIGNMENT, ":="}};
+    {TokenName::ASSIGNMENT, ":="},
+    {TokenName::INVALID, "ERROR"}};
 
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
@@ -90,10 +95,10 @@ const map<string, TokenName> keywordsMapper = {
 
 class Token
 {
+public:
     TokenName token;
     string lexeme;
 
-public:
     Token(TokenName inToken, string inLexeme = EMPTY_LEXEME) : token(inToken), lexeme(inLexeme) {}
 
     friend ostream &operator<<(ostream &out, const Token &token);
@@ -128,8 +133,7 @@ Token isIdentifierOrKeyword(ifstream &fileStream)
             c = fileStream.peek();
             if (isalpha(c))
             {
-                fileStream.get();
-                lexeme += c;
+                lexeme += fileStream.get();
                 state = 8;
             }
             else
@@ -240,6 +244,7 @@ Token isCharacterLiteral(ifstream &fileStream)
             }
             else
             {
+                lexeme = "Invalid character in literal encounrtered\t" + c;
                 state = -1;
             }
             break;
@@ -252,13 +257,14 @@ Token isCharacterLiteral(ifstream &fileStream)
             }
             else
             {
+                lexeme = "Unterminated string literal";
                 state = -1;
             }
             break;
         case 43:
-        case 44:
-        default:
             return Token(TokenName::LITERAL, lexeme);
+        default:
+            return Token(TokenName::INVALID, lexeme);
         }
     }
 }
@@ -288,6 +294,7 @@ Token isStringLiteral(ifstream &fileStream)
             c = fileStream.peek();
             if (c == fileStream.eof())
             {
+                lexeme = "Unterminated string literal";
                 state = -1;
             }
             else if (c == '"')
@@ -301,10 +308,9 @@ Token isStringLiteral(ifstream &fileStream)
             }
             break;
         case 52:
-        case 53:
-        default:
             return Token(TokenName::STRING, lexeme);
-            break;
+        default:
+            return Token(TokenName::INVALID, lexeme);
         }
     }
 }
@@ -339,6 +345,7 @@ Token isCommentOrNotEqOrDivide(ifstream &fileStream)
             }
             else if (c == '=')
             {
+                lexeme += fileStream.get();
                 return Token(TokenName::RO, "NE");
             }
             else
@@ -355,6 +362,7 @@ Token isCommentOrNotEqOrDivide(ifstream &fileStream)
             }
             else if (c == fileStream.eof())
             {
+                lexeme = "Unexpected EOF encounceted. Untermianted comment";
                 state = -1;
             }
             else
@@ -371,6 +379,7 @@ Token isCommentOrNotEqOrDivide(ifstream &fileStream)
             }
             else if (c == fileStream.eof())
             {
+                lexeme = "Unexpected EOF encounceted. Untermianted comment";
                 state = -1;
             }
             else
@@ -380,8 +389,9 @@ Token isCommentOrNotEqOrDivide(ifstream &fileStream)
             }
             break;
         case 5:
-        default:
             return Token(TokenName::COMMENT, lexeme);
+        default:
+            return Token(TokenName::INVALID, lexeme);
         }
     }
 }
@@ -445,7 +455,7 @@ Token isROorInput(ifstream &fileStream)
         case 27:
             return Token(TokenName::RO, "EQ");
         default:
-            break;
+            return Token(TokenName::INVALID);
         }
     }
 }
@@ -471,10 +481,16 @@ Token LexemeLessCreator(TokenName tokenName, ifstream &fileStream)
     fileStream.get();
     return Token(tokenName);
 }
-int main()
+void analyze(string inputFileName, string outputFileName)
 {
     ifstream inFile;
-    inFile.open("a.go");
+    inFile.open(inputFileName);
+
+    if (!inFile.is_open())
+    {
+        cout << "File does not exist or you do not have permissions" << endl;
+        return;
+    }
     vector<Token> tokens;
 
     while (true)
@@ -523,14 +539,14 @@ int main()
         case '/':
             tokens.push_back(isCommentOrNotEqOrDivide(inFile));
             break;
-        case ':':
-            tokens.push_back(isDeclarationOrAssignment(inFile));
-            break;
         case ',':
             tokens.push_back(LexemeLessCreator(TokenName::COMMA, inFile));
             break;
         case ';':
             tokens.push_back(LexemeLessCreator(TokenName::SEMI_COLON, inFile));
+            break;
+        case ':':
+            tokens.push_back(isDeclarationOrAssignment(inFile));
             break;
         case '<':
         case '>':
@@ -554,7 +570,7 @@ int main()
             }
             else
             {
-                cout << "Invalid Character: " << c << endl;
+                tokens.push_back(Token(TokenName::INVALID, "" + c));
                 inFile.get();
             }
             break;
@@ -562,9 +578,36 @@ int main()
     }
 
     ofstream outFile;
-    outFile.open("words.txt");
+    outFile.open(outputFileName);
+
+    if (!outFile.is_open())
+    {
+        cout << "Output file could not be opened. It is likely that you do not have permissions" << endl;
+    }
     for (auto token : tokens)
     {
-        outFile << token << endl;
+        if (token.token == TokenName::INVALID)
+        {
+            cout << token << endl;
+        }
+        else
+        {
+            outFile << token << endl;
+        }
     }
+}
+
+int main()
+{
+    string fileName;
+    cout << "Please enter the name of the input go file complete with extension" << endl;
+
+    cin >> fileName;
+
+    if (fileName.substr(fileName.length() - 3, 3) != ".go")
+    {
+        cout << "The given file is not a go source code file" << endl;
+        return 1;
+    }
+    analyze(fileName, OUTPUT_FILE_NAME);
 }
