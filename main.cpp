@@ -356,6 +356,65 @@ Token isCommentOrSomeRO(ifstream &fileStream)
         }
     }
 }
+
+Token isRelationalOperator(ifstream &fileStream)
+{
+    int state = 18;
+    char c;
+    while (true)
+    {
+        switch (state)
+        {
+        case 18:
+            c = fileStream.peek();
+            switch (c)
+            {
+            case '<':
+                fileStream.get();
+                state = 19;
+                break;
+            case '>':
+                fileStream.get();
+                state = 23;
+                break;
+            case '=':
+                fileStream.get();
+                state = 27;
+                break;
+            default:
+                state = -1;
+                break;
+            }
+            break;
+        case 19:
+            c = fileStream.peek();
+            if (c == '=')
+            {
+                fileStream.get();
+                return Token(TokenName::RO, "LE");
+            }
+            else
+            {
+                return Token(TokenName::RO, "LT");
+            }
+        case 23:
+            c = fileStream.peek();
+            if (c == '=')
+            {
+                fileStream.get();
+                return Token(TokenName::RO, "GE");
+            }
+            else
+            {
+                return Token(TokenName::RO, "GT");
+            }
+        case 27:
+            return Token(TokenName::RO, "EQ");
+        default:
+            break;
+        }
+    }
+}
 int main()
 {
     ifstream inFile;
@@ -372,30 +431,36 @@ int main()
             break;
         }
 
-        if (isalpha(c))
+        switch (c)
         {
-            tokens.push_back(isIdentifierOrKeyword(inFile));
-        }
-        else if (isdigit(c))
-        {
-            tokens.push_back(isNumericLiteral(inFile));
-        }
-        else if (c == '\'')
-        {
-            tokens.push_back(isCharacterLiteral(inFile));
-        }
-        else if (c == '"')
-        {
-            tokens.push_back(isStringLiteral(inFile));
-        }
-        else if (c == '/')
-        {
-
+        case '<':
+        case '>':
+        case '=':
+            tokens.push_back(isRelationalOperator(inFile));
+            break;
+        case '/':
             tokens.push_back(isCommentOrSomeRO(inFile));
-        }
-        else
-        {
-            inFile.get();
+            break;
+        case '\'':
+            tokens.push_back(isCharacterLiteral(inFile));
+            break;
+        case '"':
+            tokens.push_back(isStringLiteral(inFile));
+            break;
+        default:
+            if (isalpha(c))
+            {
+                tokens.push_back(isIdentifierOrKeyword(inFile));
+            }
+            else if (isdigit(c))
+            {
+                tokens.push_back(isNumericLiteral(inFile));
+            }
+            else
+            {
+                inFile.get();
+            }
+            break;
         }
     }
 
