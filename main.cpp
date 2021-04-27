@@ -20,7 +20,10 @@ enum TokenName
     LITERAL,
     INTEGER,
     CHAR,
-    STRING
+    STRING,
+    COMMENT,
+    RO,
+    PLUS
 };
 
 const string EMPTY_LEXEME = "^";
@@ -39,7 +42,10 @@ const map<TokenName, string> outputMapper = {
     {TokenName::INTEGER, "INT"},
     {TokenName::CHAR, "CHAR"},
     {TokenName::LITERAL, "LITERAL"},
-    {TokenName::STRING, "STRING"}};
+    {TokenName::STRING, "STRING"},
+    {TokenName::COMMENT, "COMMENT"},
+    {TokenName::RO, "RO"},
+    {TokenName::PLUS, "+"}};
 
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
@@ -274,6 +280,82 @@ Token isStringLiteral(ifstream &fileStream)
     }
 }
 
+Token isCommentOrSomeRO(ifstream &fileStream)
+{
+    int state = 1;
+    string lexeme = "";
+    char c;
+    while (true)
+    {
+        switch (state)
+        {
+        case 1:
+            c = fileStream.peek();
+            if (c == '/')
+            {
+                lexeme += fileStream.get();
+                state = 2;
+            }
+            else
+            {
+                state = -1;
+            }
+            break;
+        case 2:
+            c = fileStream.peek();
+            if (c == '*')
+            {
+                lexeme += fileStream.get();
+                state = 3;
+            }
+            else if (c == '=')
+            {
+                return Token(TokenName::RO, "NE");
+            }
+            else
+            {
+                return Token(TokenName::PLUS, EMPTY_LEXEME);
+            }
+            break;
+        case 3:
+            c = fileStream.peek();
+            if (c == '*')
+            {
+                lexeme += fileStream.get();
+                state = 4;
+            }
+            else if (c == fileStream.eof())
+            {
+                state = -1;
+            }
+            else
+            {
+                lexeme += fileStream.get();
+            }
+            break;
+        case 4:
+            c = fileStream.peek();
+            if (c == '/')
+            {
+                lexeme += fileStream.get();
+                state = 5;
+            }
+            else if (c == fileStream.eof())
+            {
+                state = -1;
+            }
+            else
+            {
+                lexeme += fileStream.get();
+                state = 3;
+            }
+            break;
+        case 5:
+        default:
+            return Token(TokenName::COMMENT, lexeme);
+        }
+    }
+}
 int main()
 {
     ifstream inFile;
@@ -305,6 +387,11 @@ int main()
         else if (c == '"')
         {
             tokens.push_back(isStringLiteral(inFile));
+        }
+        else if (c == '/')
+        {
+
+            tokens.push_back(isCommentOrSomeRO(inFile));
         }
         else
         {
