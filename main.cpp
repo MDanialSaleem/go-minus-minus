@@ -43,7 +43,8 @@ enum TokenName
     SEMI_COLON,
     INPUT,
     ASSIGNMENT,
-    INVALID
+    INVALID,
+    FILEEND // specia token for parser to know EOF.
 };
 
 const map<TokenName, string> outputMapper = {
@@ -79,7 +80,8 @@ const map<TokenName, string> outputMapper = {
     {TokenName::SEMI_COLON, "';'"},
     {TokenName::INPUT, ">>"},
     {TokenName::ASSIGNMENT, ":="},
-    {TokenName::INVALID, "ERROR"}};
+    {TokenName::INVALID, "ERROR"},
+    {TokenName::FILEEND, "EOF"}};
 
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
@@ -597,7 +599,64 @@ void analyze(string inputFileName, string outputFileName)
     }
 }
 
-int main()
+class Parser
+{
+private:
+    string fileName;
+    ifstream tokenFile;
+
+public:
+    Parser(string inFileName) : fileName(inFileName)
+    {
+        analyze(fileName, OUTPUT_FILE_NAME);
+        tokenFile.open(OUTPUT_FILE_NAME);
+        if (!tokenFile.is_open())
+        {
+            cout << "Token file could not be generated properly." << endl;
+        }
+    }
+    Token getNextToken()
+    {
+        string token;
+        string lexeme;
+        string buffer;
+        getline(tokenFile, buffer, '(');
+        getline(tokenFile, token, ',');
+        getline(tokenFile, lexeme, ')');
+        for (auto it = outputMapper.begin(); it != outputMapper.end(); ++it)
+        {
+            if (it->second == token)
+            {
+                return Token(it->first, lexeme);
+            }
+        }
+        if (tokenFile.eof())
+        {
+            return Token(TokenName::FILEEND, lexeme);
+        }
+        else
+        {
+            return Token(TokenName::INVALID, lexeme);
+        }
+    }
+    void parse()
+    {
+        while (true)
+        {
+            Token t = getNextToken();
+            if (t.token != TokenName::FILEEND)
+            {
+                cout << t << endl;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+};
+
+int mainlex()
 {
     string fileName;
     cout << "Please enter the name of the input go file complete with extension" << endl;
@@ -610,4 +669,11 @@ int main()
         return 1;
     }
     analyze(fileName, OUTPUT_FILE_NAME);
+    return 0;
+}
+
+int main()
+{
+    Parser parser = Parser("test.go");
+    parser.parse();
 }
