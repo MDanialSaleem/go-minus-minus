@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <bits/stdc++.h>
+#include <functional>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
@@ -604,6 +606,7 @@ class Parser
 private:
     string fileName;
     ifstream tokenFile;
+    Token *currToken;
 
 public:
     Parser(string inFileName) : fileName(inFileName)
@@ -614,8 +617,11 @@ public:
         {
             cout << "Token file could not be generated properly." << endl;
         }
+        currToken = new Token(parseNextToken());
     }
-    Token getNextToken()
+
+private:
+    Token parseNextToken()
     {
         string token;
         string lexeme;
@@ -639,20 +645,119 @@ public:
             return Token(TokenName::INVALID, lexeme);
         }
     }
-    void parse()
+    Token peekNextToken()
     {
-        while (true)
+        return *currToken;
+    }
+    void consumeNextToken()
+    {
+        Mark(*currToken);
+        auto newTok = parseNextToken();
+        if (newTok.token == TokenName::INVALID || newTok.token == TokenName::FILEEND)
         {
-            Token t = getNextToken();
-            if (t.token != TokenName::FILEEND)
+            exit(0);
+        }
+        currToken = new Token(newTok);
+    }
+
+    void P()
+    {
+        Mark("P");
+        auto token = this->peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::NUM:
+        case TokenName::IDENTIFIER:
+            consumeNextToken();
+            break;
+        case TokenName::OPEN_PARANTHESIS:
+        {
+            consumeNextToken();
+            E();
+            auto anotherToken = this->peekNextToken();
+            if (anotherToken.token == TokenName::CLOSE_PARANTHESIS)
             {
-                cout << t << endl;
+                consumeNextToken();
             }
             else
             {
-                break;
+                Error("P", anotherToken);
             }
+            break;
         }
+        default:
+            Error("P", token);
+            break;
+        }
+    }
+    void M_PRIME()
+    {
+        Mark("M'");
+        auto token = this->peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::PRODUCT:
+        case TokenName::DIVIDE:
+            P();
+            M_PRIME();
+            break;
+        default:
+            break;
+        }
+    }
+    void M()
+    {
+        Mark("M");
+        P();
+        M_PRIME();
+    }
+    void E_PRIME()
+    {
+        Mark("E'");
+        auto token = this->peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::PLUS:
+        case TokenName::MINUS:
+            consumeNextToken();
+            M();
+            E_PRIME();
+            break;
+        default:
+            break;
+        }
+    }
+    void E()
+    {
+        Mark("E");
+        M();
+        E_PRIME();
+    }
+    void S()
+    {
+        Mark("S");
+        E();
+        S();
+    }
+
+    void Mark(string functionName)
+    {
+        cout << functionName << endl;
+    }
+    void Mark(Token token)
+    {
+        cout << token << endl;
+    }
+    void Error(string functionName, Token token)
+    {
+        cout << "Unexpected token " << token << "occured in" << functionName << endl;
+    }
+
+public:
+    void parse()
+    {
+
+        S();
     }
 };
 
@@ -674,6 +779,6 @@ int mainlex()
 
 int main()
 {
-    Parser parser = Parser("test.go");
+    Parser parser = Parser("test2.go");
     parser.parse();
 }
