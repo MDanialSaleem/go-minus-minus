@@ -745,7 +745,6 @@ private:
         EnterFunction("E");
         M();
         E_PRIME();
-        MatchToken("E", Token(TokenName::SEMI_COLON));
         LeaveFunction();
     }
     void N()
@@ -789,24 +788,117 @@ private:
         }
         LeaveFunction();
     }
-    void S()
+    void G()
     {
-
-        EnterFunction("S");
-        auto token = tokenReader.peekNextToken();
+        const string functionName = "G";
+        EnterFunction(functionName);
+        Token tok = tokenReader.peekNextToken();
+        if (tok.token == TokenName::LITERAL)
+        {
+            MatchToken(functionName, tok);
+        }
+        else
+        {
+            E();
+        }
+        LeaveFunction();
+    }
+    void B()
+    {
+        const string functionName = "B";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
         switch (token.token)
         {
-        case TokenName::FILEEND:
-            Mark(Token());
-            break;
         case TokenName::PRINT:
         case TokenName::PRINTLN:
             L();
             S();
             break;
-        default:
-            E();
+        case TokenName::IF:
+            C();
             S();
+            break;
+        case TokenName::IDENTIFIER:
+            E();
+            MatchToken(functionName, Token(TokenName::SEMI_COLON));
+            S();
+            break;
+        default:
+            MatchToken(functionName, Token());
+            break;
+        }
+        LeaveFunction();
+    }
+    void H()
+    {
+        const string functionName = "H";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::ELSE:
+            MatchToken(functionName, TokenName::ELSE);
+            MatchToken(functionName, TokenName::OPEN_BRACES);
+            B();
+            MatchToken(functionName, TokenName::CLOSE_BRACES);
+            break;
+        case TokenName::ELIF:
+            MatchToken(functionName, TokenName::ELIF);
+            G();
+            MatchToken(functionName, TokenName::RO);
+            G();
+            MatchToken(functionName, TokenName::DECLARATION);
+            MatchToken(functionName, TokenName::OPEN_BRACES);
+            B();
+            MatchToken(functionName, TokenName::CLOSE_BRACES);
+            H();
+            break;
+        default:
+            MatchToken(functionName, Token());
+            break;
+        }
+        LeaveFunction();
+    }
+    void C()
+    {
+        const string functionName = "C";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::IF);
+        G();
+        MatchToken(functionName, TokenName::RO);
+        G();
+        MatchToken(functionName, TokenName::DECLARATION);
+        MatchToken(functionName, TokenName::OPEN_BRACES);
+        B();
+        MatchToken(functionName, TokenName::CLOSE_BRACES);
+        H();
+        LeaveFunction();
+    }
+    void S()
+    {
+        const string functionName = "S";
+        EnterFunction(functionName);
+        auto token = tokenReader.peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::PRINT:
+        case TokenName::PRINTLN:
+            L();
+            S();
+            break;
+        case TokenName::IF:
+            C();
+            S();
+            break;
+        case TokenName::IDENTIFIER:
+            E();
+            MatchToken(functionName, Token(TokenName::SEMI_COLON));
+            S();
+            break;
+        case TokenName::FILEEND:
+        default:
+            Mark(Token());
             break;
         }
         LeaveFunction();
@@ -817,12 +909,16 @@ private:
         auto consumeToken = tokenReader.consumeNextToken();
         if (token.CheckOnlyTokenType(consumeToken))
         {
+            if (consumeToken.token == TokenName::RO && consumeToken.lexeme == "EQ")
+            {
+                tokenReader.consumeNextToken();
+            }
             Mark(consumeToken);
         }
         else
         {
             cout << "Expected token " << token << "in " << functionName << " but found " << consumeToken << endl;
-            exit(0);
+            exit(1);
         }
     }
 
@@ -863,6 +959,7 @@ private:
     void UnexptedToken(string functionName, Token token)
     {
         cout << "Unexpected token " << token << "occured in" << functionName << endl;
+        exit(1);
     }
 
 public:
