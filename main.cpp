@@ -46,7 +46,8 @@ enum TokenName
     INPUT,
     ASSIGNMENT,
     INVALID,
-    FILEEND // specia token for parser to know EOF.
+    FILEEND, // specia token for parser to know EOF.
+    NULLPROD // special token for parser to know numm productions.
 };
 
 const map<TokenName, string> outputMapper = {
@@ -104,7 +105,7 @@ public:
     string lexeme;
 
     Token(TokenName inToken, string inLexeme = EMPTY_LEXEME) : token(inToken), lexeme(inLexeme) {}
-
+    Token() : token(TokenName::NULLPROD), lexeme("^"){};
     friend ostream &operator<<(ostream &out, const Token &token);
 };
 
@@ -607,6 +608,8 @@ private:
     string fileName;
     ifstream tokenFile;
     Token *currToken;
+    int depth = -1;
+    bool ended = false;
 
 public:
     Parser(string inFileName) : fileName(inFileName)
@@ -649,35 +652,37 @@ private:
     {
         return *currToken;
     }
-    void consumeNextToken()
+    Token consumeNextToken()
     {
-        Mark(*currToken);
+        auto returner = *currToken;
         auto newTok = parseNextToken();
         if (newTok.token == TokenName::INVALID || newTok.token == TokenName::FILEEND)
         {
-            exit(0);
+            ended = true;
+            ;
         }
         currToken = new Token(newTok);
+        return returner;
     }
 
     void P()
     {
-        Mark("P");
+        EnterFunction("P");
         auto token = this->peekNextToken();
         switch (token.token)
         {
         case TokenName::NUM:
         case TokenName::IDENTIFIER:
-            consumeNextToken();
+            Mark(consumeNextToken());
             break;
         case TokenName::OPEN_PARANTHESIS:
         {
-            consumeNextToken();
+            Mark(consumeNextToken());
             E();
             auto anotherToken = this->peekNextToken();
             if (anotherToken.token == TokenName::CLOSE_PARANTHESIS)
             {
-                consumeNextToken();
+                Mark(consumeNextToken());
             }
             else
             {
@@ -689,64 +694,107 @@ private:
             Error("P", token);
             break;
         }
+        LeaveFunction();
     }
     void M_PRIME()
     {
-        Mark("M'");
+        EnterFunction("M'");
         auto token = this->peekNextToken();
         switch (token.token)
         {
         case TokenName::PRODUCT:
         case TokenName::DIVIDE:
+            Mark(consumeNextToken());
             P();
             M_PRIME();
             break;
         default:
+            Mark(Token());
             break;
         }
+        LeaveFunction();
     }
     void M()
     {
-        Mark("M");
+        EnterFunction("M");
         P();
         M_PRIME();
+        LeaveFunction();
     }
     void E_PRIME()
     {
-        Mark("E'");
+        EnterFunction("E'");
         auto token = this->peekNextToken();
         switch (token.token)
         {
         case TokenName::PLUS:
         case TokenName::MINUS:
-            consumeNextToken();
+            Mark(consumeNextToken());
             M();
             E_PRIME();
             break;
         default:
+            Mark(Token());
             break;
         }
+        LeaveFunction();
     }
     void E()
     {
-        Mark("E");
+        EnterFunction("E");
         M();
         E_PRIME();
+        LeaveFunction();
     }
     void S()
     {
-        Mark("S");
-        E();
-        S();
+
+        EnterFunction("S");
+        if (!ended)
+        {
+            E();
+            S();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
     }
 
+    void MarkDepth()
+    {
+        cout << "|";
+        for (int i = 0; i < depth; i++)
+        {
+            cout << "-";
+        }
+    }
     void Mark(string functionName)
     {
+        if (functionName.length() == 0)
+        {
+            cout << "ERROR: FUNCTION NAME CANNOT BE EMPTY" << endl;
+        }
+        MarkDepth();
         cout << functionName << endl;
     }
     void Mark(Token token)
     {
+        depth++;
+        MarkDepth();
         cout << token << endl;
+        depth--;
+    }
+
+    void EnterFunction(string functionName)
+    {
+        depth++;
+        Mark(functionName);
+    }
+    void LeaveFunction()
+    {
+        depth--;
     }
     void Error(string functionName, Token token)
     {
