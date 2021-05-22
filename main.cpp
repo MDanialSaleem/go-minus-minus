@@ -107,6 +107,14 @@ public:
     Token(TokenName inToken, string inLexeme = EMPTY_LEXEME) : token(inToken), lexeme(inLexeme) {}
     Token() : token(TokenName::NULLPROD), lexeme("^"){};
     friend ostream &operator<<(ostream &out, const Token &token);
+    bool operator==(Token &other)
+    {
+        return this->token == other.token && this->lexeme == other.lexeme;
+    }
+    bool CheckOnlyTokenType(Token &other)
+    {
+        return this->token == other.token;
+    }
 };
 
 ostream &operator<<(ostream &out, const Token &token)
@@ -680,18 +688,11 @@ private:
             Mark(tokenReader.consumeNextToken());
             E();
             auto anotherToken = tokenReader.peekNextToken();
-            if (anotherToken.token == TokenName::CLOSE_PARANTHESIS)
-            {
-                Mark(tokenReader.consumeNextToken());
-            }
-            else
-            {
-                Error("P", anotherToken);
-            }
+            MatchToken("P", Token(TokenName::CLOSE_PARANTHESIS));
             break;
         }
         default:
-            Error("P", token);
+            UnexptedToken("P", token);
             break;
         }
         LeaveFunction();
@@ -744,6 +745,48 @@ private:
         EnterFunction("E");
         M();
         E_PRIME();
+        MatchToken("E", Token(TokenName::SEMI_COLON));
+        LeaveFunction();
+    }
+    void N()
+    {
+        const string functionName = "N";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
+        TokenName matchableTokens[] = {TokenName::STRING, TokenName::IDENTIFIER, TokenName::LITERAL, TokenName::NUM};
+        bool found = false;
+        for (auto it : matchableTokens)
+        {
+            if (token.token == it)
+            {
+                found = true;
+                MatchToken(functionName, it);
+            }
+        }
+        if (!found)
+        {
+            UnexptedToken(functionName, token);
+        }
+        LeaveFunction();
+    }
+    void L()
+    {
+        string functionName = "L";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
+        switch (token.token)
+        {
+        case TokenName::PRINT:
+        case TokenName::PRINTLN:
+            MatchToken(functionName, token.token == TokenName::PRINT ? TokenName::PRINT : TokenName::PRINTLN);
+            MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
+            N();
+            MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
+            MatchToken(functionName, TokenName::SEMI_COLON);
+            break;
+        default:
+            break;
+        }
         LeaveFunction();
     }
     void S()
@@ -751,16 +794,36 @@ private:
 
         EnterFunction("S");
         auto token = tokenReader.peekNextToken();
-        if (token.token == TokenName::FILEEND)
+        switch (token.token)
         {
+        case TokenName::FILEEND:
             Mark(Token());
+            break;
+        case TokenName::PRINT:
+        case TokenName::PRINTLN:
+            L();
+            S();
+            break;
+        default:
+            E();
+            S();
+            break;
+        }
+        LeaveFunction();
+    }
+
+    void MatchToken(string functionName, Token token)
+    {
+        auto consumeToken = tokenReader.consumeNextToken();
+        if (token.CheckOnlyTokenType(consumeToken))
+        {
+            Mark(consumeToken);
         }
         else
         {
-            E();
-            S();
+            cout << "Expected token " << token << "in " << functionName << " but found " << consumeToken << endl;
+            exit(0);
         }
-        LeaveFunction();
     }
 
     void MarkDepth()
@@ -797,7 +860,7 @@ private:
     {
         depth--;
     }
-    void Error(string functionName, Token token)
+    void UnexptedToken(string functionName, Token token)
     {
         cout << "Unexpected token " << token << "occured in" << functionName << endl;
     }
