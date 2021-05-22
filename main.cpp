@@ -602,28 +602,11 @@ void analyze(string inputFileName, string outputFileName)
     }
 }
 
-class Parser
+class TokenReader
 {
 private:
-    string fileName;
     ifstream tokenFile;
-    Token *currToken;
-    int depth = -1;
-    bool ended = false;
-
-public:
-    Parser(string inFileName) : fileName(inFileName)
-    {
-        analyze(fileName, OUTPUT_FILE_NAME);
-        tokenFile.open(OUTPUT_FILE_NAME);
-        if (!tokenFile.is_open())
-        {
-            cout << "Token file could not be generated properly." << endl;
-        }
-        currToken = new Token(parseNextToken());
-    }
-
-private:
+    Token currToken;
     Token parseNextToken()
     {
         string token;
@@ -648,41 +631,58 @@ private:
             return Token(TokenName::INVALID, lexeme);
         }
     }
+
+public:
+    TokenReader(string fileName)
+    {
+        analyze(fileName, OUTPUT_FILE_NAME);
+        tokenFile.open(OUTPUT_FILE_NAME);
+        if (!tokenFile.is_open())
+        {
+            cout << "Token file could not be generated properly." << endl;
+        }
+        currToken = parseNextToken();
+    }
     Token peekNextToken()
     {
-        return *currToken;
+        return currToken;
     }
     Token consumeNextToken()
     {
-        auto returner = *currToken;
-        auto newTok = parseNextToken();
-        if (newTok.token == TokenName::INVALID || newTok.token == TokenName::FILEEND)
-        {
-            ended = true;
-            ;
-        }
-        currToken = new Token(newTok);
+        auto returner = currToken;
+        currToken = parseNextToken();
         return returner;
     }
+};
 
+class Parser
+{
+private:
+    int depth = -1;
+    TokenReader tokenReader;
+
+public:
+    Parser(string fileName) : tokenReader(fileName) {}
+
+private:
     void P()
     {
         EnterFunction("P");
-        auto token = this->peekNextToken();
+        auto token = tokenReader.peekNextToken();
         switch (token.token)
         {
         case TokenName::NUM:
         case TokenName::IDENTIFIER:
-            Mark(consumeNextToken());
+            Mark(tokenReader.consumeNextToken());
             break;
         case TokenName::OPEN_PARANTHESIS:
         {
-            Mark(consumeNextToken());
+            Mark(tokenReader.consumeNextToken());
             E();
-            auto anotherToken = this->peekNextToken();
+            auto anotherToken = tokenReader.peekNextToken();
             if (anotherToken.token == TokenName::CLOSE_PARANTHESIS)
             {
-                Mark(consumeNextToken());
+                Mark(tokenReader.consumeNextToken());
             }
             else
             {
@@ -699,12 +699,12 @@ private:
     void M_PRIME()
     {
         EnterFunction("M'");
-        auto token = this->peekNextToken();
+        auto token = tokenReader.peekNextToken();
         switch (token.token)
         {
         case TokenName::PRODUCT:
         case TokenName::DIVIDE:
-            Mark(consumeNextToken());
+            Mark(tokenReader.consumeNextToken());
             P();
             M_PRIME();
             break;
@@ -724,12 +724,12 @@ private:
     void E_PRIME()
     {
         EnterFunction("E'");
-        auto token = this->peekNextToken();
+        auto token = tokenReader.peekNextToken();
         switch (token.token)
         {
         case TokenName::PLUS:
         case TokenName::MINUS:
-            Mark(consumeNextToken());
+            Mark(tokenReader.consumeNextToken());
             M();
             E_PRIME();
             break;
@@ -750,14 +750,15 @@ private:
     {
 
         EnterFunction("S");
-        if (!ended)
+        auto token = tokenReader.peekNextToken();
+        if (token.token == TokenName::FILEEND)
         {
-            E();
-            S();
+            Mark(Token());
         }
         else
         {
-            Mark(Token());
+            E();
+            S();
         }
         LeaveFunction();
     }
