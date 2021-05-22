@@ -659,6 +659,10 @@ public:
     {
         auto returner = currToken;
         currToken = parseNextToken();
+        while (currToken.token == TokenName::COMMENT)
+        {
+            currToken = parseNextToken();
+        }
         return returner;
     }
 };
@@ -819,6 +823,10 @@ private:
             C();
             S();
             break;
+        case TokenName::WHILE:
+            W();
+            B();
+            break;
         case TokenName::IDENTIFIER:
             E();
             MatchToken(functionName, Token(TokenName::SEMI_COLON));
@@ -875,6 +883,24 @@ private:
         H();
         LeaveFunction();
     }
+    void X()
+    {
+        G();
+    }
+    void W()
+    {
+        const string functionName = "W";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::WHILE);
+        X();
+        MatchToken(functionName, TokenName::RO);
+        X();
+        MatchToken(functionName, TokenName::DECLARATION);
+        MatchToken(functionName, TokenName::OPEN_BRACES);
+        B();
+        MatchToken(functionName, TokenName::CLOSE_BRACES);
+        LeaveFunction();
+    }
     void S()
     {
         const string functionName = "S";
@@ -889,6 +915,10 @@ private:
             break;
         case TokenName::IF:
             C();
+            S();
+            break;
+        case TokenName::WHILE:
+            W();
             S();
             break;
         case TokenName::IDENTIFIER:
@@ -965,7 +995,6 @@ private:
 public:
     void parse()
     {
-
         S();
     }
 };
