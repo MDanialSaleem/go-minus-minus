@@ -622,6 +622,12 @@ private:
         string buffer;
         getline(tokenFile, buffer, '(');
         getline(tokenFile, token, ',');
+        if (tokenFile.peek() == '\'')
+        {
+            //handles the special case when the token is comma. it is of the form ','
+            tokenFile.get();
+            token = "','";
+        }
         getline(tokenFile, lexeme, ')');
         for (auto it = outputMapper.begin(); it != outputMapper.end(); ++it)
         {
@@ -827,13 +833,18 @@ private:
             W();
             B();
             break;
+        case TokenName::INTEGER:
+        case TokenName::CHAR:
+            D();
+            B();
+            break;
         case TokenName::IDENTIFIER:
             E();
             MatchToken(functionName, Token(TokenName::SEMI_COLON));
             S();
             break;
         default:
-            MatchToken(functionName, Token());
+            Mark(Token());
             break;
         }
         LeaveFunction();
@@ -901,6 +912,53 @@ private:
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         LeaveFunction();
     }
+    void T()
+    {
+        const string functionName = "Y";
+        EnterFunction(functionName);
+        Token tok = tokenReader.peekNextToken();
+        if (tok.token == TokenName::INTEGER)
+        {
+            MatchToken(functionName, TokenName::INTEGER);
+        }
+        else if (tok.token == TokenName::CHAR)
+        {
+            MatchToken(functionName, TokenName::CHAR);
+        }
+        else
+        {
+            UnexptedToken(functionName, tok);
+        }
+        LeaveFunction();
+    }
+    void F()
+    {
+        const string functionName = "F";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
+        if (token.token == TokenName::COMMA)
+        {
+            MatchToken(functionName, TokenName::COMMA);
+            MatchToken(functionName, TokenName::IDENTIFIER);
+            F();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
+    void D()
+    {
+        const string functionName = "D";
+        EnterFunction(functionName);
+        T();
+        MatchToken(functionName, TokenName::DECLARATION);
+        MatchToken(functionName, TokenName::IDENTIFIER);
+        F();
+        MatchToken(functionName, TokenName::SEMI_COLON);
+        LeaveFunction();
+    }
     void S()
     {
         const string functionName = "S";
@@ -921,6 +979,11 @@ private:
             W();
             S();
             break;
+        case TokenName::INTEGER:
+        case TokenName::CHAR:
+            D();
+            S();
+            break;
         case TokenName::IDENTIFIER:
             E();
             MatchToken(functionName, Token(TokenName::SEMI_COLON));
@@ -936,6 +999,10 @@ private:
 
     void MatchToken(string functionName, Token token)
     {
+        if (token.token == TokenName::NULLPROD)
+        {
+            cout << "Trying to match null production this should probably be marked instead" << endl;
+        }
         auto consumeToken = tokenReader.consumeNextToken();
         if (token.CheckOnlyTokenType(consumeToken))
         {
