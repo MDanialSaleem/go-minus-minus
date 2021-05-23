@@ -4,7 +4,7 @@
 #include <vector>
 #include <map>
 #include <bits/stdc++.h>
-#include <functional>
+#include <vector>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
@@ -20,6 +20,7 @@ enum TokenName
     WHILE,
     IN,
     FUNC,
+    RET,
     PRINT,
     PRINTLN,
     IDENTIFIER,
@@ -57,6 +58,7 @@ const map<TokenName, string> outputMapper = {
     {TokenName::WHILE, "WHILE"},
     {TokenName::IN, "IN"},
     {TokenName::FUNC, "FUNC"},
+    {TokenName::RET, "RET"},
     {TokenName::PRINT, "PRINT"},
     {TokenName::PRINTLN, "PRINTLN"},
     {TokenName::IDENTIFIER, "ID"},
@@ -86,6 +88,7 @@ const map<TokenName, string> outputMapper = {
     {TokenName::INVALID, "ERROR"},
     {TokenName::FILEEND, "EOF"}};
 
+// used to differentiate between identifiers and keywords.
 const map<string, TokenName> keywordsMapper = {
     {"if", TokenName::IF},
     {"elif", TokenName::ELIF},
@@ -93,6 +96,7 @@ const map<string, TokenName> keywordsMapper = {
     {"while", TokenName::WHILE},
     {"in", TokenName::IN},
     {"func", TokenName::FUNC},
+    {"ret", TokenName::RET},
     {"print", TokenName::PRINT},
     {"println", TokenName::PRINTLN},
     {"integer", TokenName::INTEGER},
@@ -615,6 +619,9 @@ class TokenReader
 private:
     ifstream tokenFile;
     Token currToken;
+    // read comment over the peekNextMultipleTokens to see the need for this.
+    vector<Token> readAheadBuffer;
+
     Token parseNextToken()
     {
         string token;
@@ -622,10 +629,10 @@ private:
         string buffer;
         getline(tokenFile, buffer, '(');
         getline(tokenFile, token, ',');
-        if (tokenFile.peek() == '\'')
+        if (token == "'")
         {
             //handles the special case when the token is comma. it is of the form ','
-            tokenFile.get();
+            tokenFile.get(); // remove the ending '
             token = "','";
         }
         getline(tokenFile, lexeme, ')');
@@ -645,6 +652,15 @@ private:
             return Token(TokenName::INVALID, lexeme);
         }
     }
+    Token getFreshNextToken()
+    {
+        Token returner = parseNextToken();
+        while (returner.token == TokenName::COMMENT)
+        {
+            returner = parseNextToken();
+        }
+        return returner;
+    }
 
 public:
     TokenReader(string fileName)
@@ -663,11 +679,32 @@ public:
     }
     Token consumeNextToken()
     {
-        auto returner = currToken;
-        currToken = parseNextToken();
-        while (currToken.token == TokenName::COMMENT)
+        Token returner = currToken;
+        if (readAheadBuffer.empty())
         {
-            currToken = parseNextToken();
+            currToken = getFreshNextToken();
+        }
+        else
+        {
+            currToken = readAheadBuffer[0];
+            readAheadBuffer.erase(readAheadBuffer.begin());
+        }
+
+        return returner;
+    }
+    vector<Token> peekNextMultiple(int N)
+    {
+        vector<Token> returner;
+        returner.reserve(N);
+        returner.push_back(currToken);
+        int needed = N - 1;
+        for (int i = 0; i < readAheadBuffer.size() - needed; i++)
+        {
+            readAheadBuffer.push_back(getFreshNextToken());
+        }
+        for (int i = 0; i < needed; i++)
+        {
+            returner.push_back(readAheadBuffer[i]);
         }
         return returner;
     }
@@ -843,9 +880,23 @@ private:
             B();
             break;
         case TokenName::IDENTIFIER:
-            E();
-            MatchToken(functionName, Token(TokenName::SEMI_COLON));
-            S();
+            if (isIncomingAssignment())
+            {
+                A();
+                S();
+            }
+            else if (isIncomingFunctionCall())
+            {
+                O();
+                S();
+            }
+            else
+            {
+                E();
+                MatchToken(functionName, Token(TokenName::SEMI_COLON));
+                S();
+            }
+
             break;
         default:
             Mark(Token());
@@ -999,6 +1050,22 @@ private:
         }
         LeaveFunction();
     }
+    void Q()
+    {
+        const string functionName = "Q";
+        EnterFunction(functionName);
+        if (tokenReader.peekNextToken().token == TokenName::RET)
+        {
+            MatchToken(functionName, TokenName::RET);
+            G();
+            MatchToken(functionName, TokenName::SEMI_COLON);
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
     void FN()
     {
         const string functionName = "FN";
@@ -1012,6 +1079,7 @@ private:
         MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
+        Q();
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         LeaveFunction();
     }
@@ -1022,6 +1090,67 @@ private:
         MatchToken(functionName, TokenName::IN);
         MatchToken(functionName, TokenName::INPUT);
         MatchToken(functionName, TokenName::IDENTIFIER);
+        MatchToken(functionName, TokenName::SEMI_COLON);
+        LeaveFunction();
+    }
+    void A()
+    {
+        const string functionName = "A";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::IDENTIFIER);
+        MatchToken(functionName, TokenName::ASSIGNMENT);
+
+        Token tok = tokenReader.peekNextToken();
+        if (tok.token == TokenName::LITERAL)
+        {
+            MatchToken(functionName, TokenName::LITERAL);
+        }
+        else
+        {
+            E();
+        }
+        MatchToken(functionName, TokenName::SEMI_COLON);
+        LeaveFunction();
+    }
+    void O_PRIME_PRIME()
+    {
+        const string functionName = "O''";
+        EnterFunction(functionName);
+        if (tokenReader.peekNextToken().token == TokenName::COMMA)
+        {
+            MatchToken(functionName, TokenName::COMMA);
+            MatchToken(functionName, TokenName::IDENTIFIER);
+            O_PRIME_PRIME();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
+    void O_PRIME()
+    {
+        const string functionName = "O'";
+        EnterFunction(functionName);
+        if (tokenReader.peekNextToken().token == TokenName::IDENTIFIER)
+        {
+            MatchToken(functionName, TokenName::IDENTIFIER);
+            O_PRIME_PRIME();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
+    void O()
+    {
+        const string functionName = "O";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::IDENTIFIER);
+        MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
+        O_PRIME();
+        MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
@@ -1059,9 +1188,23 @@ private:
             S();
             break;
         case TokenName::IDENTIFIER:
-            E();
-            MatchToken(functionName, Token(TokenName::SEMI_COLON));
-            S();
+            if (isIncomingAssignment())
+            {
+                A();
+                S();
+            }
+            else if (isIncomingFunctionCall())
+            {
+                O();
+                S();
+            }
+            else
+            {
+                E();
+                MatchToken(functionName, Token(TokenName::SEMI_COLON));
+                S();
+            }
+
             break;
         case TokenName::FILEEND:
         default:
@@ -1071,6 +1214,16 @@ private:
         LeaveFunction();
     }
 
+    bool isIncomingAssignment()
+    {
+        vector<Token> lookAhead = tokenReader.peekNextMultiple(2);
+        return lookAhead.size() == 2 && lookAhead[0].token == TokenName::IDENTIFIER && lookAhead[1].token == TokenName::ASSIGNMENT;
+    }
+    bool isIncomingFunctionCall()
+    {
+        vector<Token> lookAhead = tokenReader.peekNextMultiple(2);
+        return lookAhead.size() == 2 && lookAhead[0].token == TokenName::IDENTIFIER && lookAhead[1].token == TokenName::OPEN_PARANTHESIS;
+    }
     void MatchToken(string functionName, Token token)
     {
         if (token.token == TokenName::NULLPROD)
@@ -1159,6 +1312,6 @@ int mainlex()
 int main()
 {
     // mainlex();
-    Parser parser = Parser("test2.go");
+    Parser parser = Parser("test.go");
     parser.parse();
 }
