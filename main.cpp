@@ -3,12 +3,14 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <bits/stdc++.h>
 #include <vector>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
-const string OUTPUT_FILE_NAME = "words.txt"; //BECUASE SIR SPECIFIED IT IN ASSIGNMENT.
+//HARDCODED BECUASE SIR SPECIFIED THESE IN ASSIGNMENT.
+const string LEX_OUTPUT_FILE_NAME = "words.txt";
+const string PARSE_TREE_OUTPUT_FILE_NAME = "parsetree.txt";
+const string SYMBOL_TABLE_OUTPUT_FILE_NAME = "parser-symboltable.txt";
 
 // On how state machines are represented:
 // They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
@@ -86,7 +88,8 @@ const map<TokenName, string> outputMapper = {
     {TokenName::INPUT, ">>"},
     {TokenName::ASSIGNMENT, ":="},
     {TokenName::INVALID, "ERROR"},
-    {TokenName::FILEEND, "EOF"}};
+    {TokenName::FILEEND, "EOF"},
+    {TokenName::NULLPROD, "^"}};
 
 // used to differentiate between identifiers and keywords.
 const map<string, TokenName> keywordsMapper = {
@@ -119,21 +122,26 @@ public:
     {
         return this->token == other.token;
     }
+    static string getOutputMapping(const Token &token)
+    {
+        auto it = outputMapper.find(token.token);
+        string output;
+        if (it == outputMapper.end())
+        {
+            output = "Output mapping not defined for " + token.token;
+        }
+        else
+        {
+            output = it->second;
+        }
+        return output;
+    }
 };
 
 ostream &operator<<(ostream &out, const Token &token)
 {
-    auto it = outputMapper.find(token.token);
-    string output;
-    if (it == outputMapper.end())
-    {
-        output = "Output mapping not defined for " + token.token;
-    }
-    else
-    {
-        output = it->second;
-    }
-    out << '(' << output << ',' << token.lexeme << ')';
+
+    out << '(' << Token::getOutputMapping(token) << ',' << token.lexeme << ')';
     return out;
 }
 Token isIdentifierOrKeyword(ifstream &fileStream)
@@ -524,6 +532,7 @@ void analyze(string inputFileName, string outputFileName)
         {
         case ' ':
         case '\n':
+        case '\t':
             inFile.get();
             break;
         case '{':
@@ -634,8 +643,12 @@ private:
             //handles the special case when the token is comma. it is of the form ','
             tokenFile.get(); // remove the ending '
             token = "','";
+            lexeme = EMPTY_LEXEME;
         }
-        getline(tokenFile, lexeme, ')');
+        else
+        {
+            getline(tokenFile, lexeme, ')');
+        }
         for (auto it = outputMapper.begin(); it != outputMapper.end(); ++it)
         {
             if (it->second == token)
@@ -665,8 +678,8 @@ private:
 public:
     TokenReader(string fileName)
     {
-        analyze(fileName, OUTPUT_FILE_NAME);
-        tokenFile.open(OUTPUT_FILE_NAME);
+        analyze(fileName, LEX_OUTPUT_FILE_NAME);
+        tokenFile.open(LEX_OUTPUT_FILE_NAME);
         if (!tokenFile.is_open())
         {
             cout << "Token file could not be generated properly." << endl;
@@ -710,14 +723,122 @@ public:
     }
 };
 
+const string DECLARATION_PRODUCTION_NAME = "D";
+const string PARAMTER_PRODCUTION_NAME = "PAR";
+
+class SymbolTable
+{
+private:
+    ofstream symbolTableOutputStream;
+    bool declaration = false;
+    bool paramters = false;
+    TokenName activeDataType;
+    // jsut as an extra safety layer.
+    void setActiveDataType(TokenName tokenName)
+    {
+        if (tokenName == TokenName::INTEGER || tokenName == TokenName::CHAR)
+        {
+            activeDataType = tokenName;
+        }
+        else
+        {
+            cout << "[SYMBOL TABLE] Trying to set wrong active data type." << endl;
+        }
+    }
+
+public:
+    SymbolTable()
+    {
+        symbolTableOutputStream.open(SYMBOL_TABLE_OUTPUT_FILE_NAME);
+        if (!symbolTableOutputStream.is_open())
+        {
+            cout << "could not open symbol file" << endl;
+        }
+    }
+    void evaluate(Token token)
+    {
+        if (declaration)
+        {
+            // this works like a simple state machine.
+            switch (token.token)
+            {
+            case TokenName::INTEGER:
+            case TokenName::CHAR:
+                setActiveDataType(token.token);
+                break;
+            case TokenName::IDENTIFIER:
+
+                symbolTableOutputStream << Token::getOutputMapping(activeDataType) << "---" << token.lexeme << endl;
+                break;
+            case TokenName::SEMI_COLON:
+                declaration = false;
+                break;
+            default:
+                break;
+            }
+        }
+        else if (paramters)
+        {
+            switch (token.token)
+            {
+            case TokenName::INTEGER:
+            case TokenName::CHAR:
+                setActiveDataType(token.token);
+                break;
+            case TokenName::IDENTIFIER:
+                symbolTableOutputStream << Token::getOutputMapping(activeDataType) << "---" << token.lexeme << endl;
+                break;
+            case TokenName::CLOSE_PARANTHESIS:
+                paramters = false;
+            default:
+                break;
+            }
+        }
+    }
+    void evaluate(string functionName)
+    {
+        if (functionName == DECLARATION_PRODUCTION_NAME)
+        {
+            if (paramters || declaration)
+            {
+                cout << "[SYMBOL TABLE] no declaration within paramters or declaration" << endl;
+            }
+            else
+            {
+                declaration = true;
+            }
+        }
+        else if (functionName == PARAMTER_PRODCUTION_NAME)
+        {
+            if (paramters || declaration)
+            {
+                cout << "[SYMBOL TABLE] no paramters within parameters or declaration" << endl;
+            }
+            else
+            {
+                paramters = true;
+            }
+        }
+    }
+};
+
 class Parser
 {
 private:
     int depth = -1;
     TokenReader tokenReader;
+    SymbolTable symTable;
+    ofstream parseTreeOutputStream;
 
 public:
-    Parser(string fileName) : tokenReader(fileName) {}
+    Parser(string sourceCodeFileName) : tokenReader(sourceCodeFileName)
+    {
+        parseTreeOutputStream.open(PARSE_TREE_OUTPUT_FILE_NAME);
+        if (!parseTreeOutputStream.is_open())
+        {
+            cout << "could not open parse tree file" << endl;
+        }
+    }
 
 private:
     void P()
@@ -1005,7 +1126,7 @@ private:
     }
     void D()
     {
-        const string functionName = "D";
+        const string functionName = DECLARATION_PRODUCTION_NAME;
         EnterFunction(functionName);
         T();
         MatchToken(functionName, TokenName::DECLARATION);
@@ -1233,10 +1354,7 @@ private:
         auto consumeToken = tokenReader.consumeNextToken();
         if (token.CheckOnlyTokenType(consumeToken))
         {
-            if (consumeToken.token == TokenName::RO && consumeToken.lexeme == "EQ")
-            {
-                tokenReader.consumeNextToken();
-            }
+            symTable.evaluate(consumeToken);
             Mark(consumeToken);
         }
         else
@@ -1248,10 +1366,10 @@ private:
 
     void MarkDepth()
     {
-        cout << "|";
+        parseTreeOutputStream << "|";
         for (int i = 0; i < depth; i++)
         {
-            cout << "-";
+            parseTreeOutputStream << "-";
         }
     }
     void Mark(string functionName)
@@ -1261,18 +1379,24 @@ private:
             cout << "ERROR: FUNCTION NAME CANNOT BE EMPTY" << endl;
         }
         MarkDepth();
-        cout << functionName << endl;
+        parseTreeOutputStream << functionName << endl;
     }
     void Mark(Token token)
     {
         depth++;
         MarkDepth();
-        cout << token << endl;
+        parseTreeOutputStream << Token::getOutputMapping(token);
+        if (token.lexeme != EMPTY_LEXEME)
+        {
+            parseTreeOutputStream << "(" << token.lexeme << ")";
+        }
+        parseTreeOutputStream << endl;
         depth--;
     }
 
     void EnterFunction(string functionName)
     {
+        symTable.evaluate(functionName);
         depth++;
         Mark(functionName);
     }
@@ -1293,7 +1417,7 @@ public:
     }
 };
 
-int mainlex()
+int main()
 {
     string fileName;
     cout << "Please enter the name of the input go file complete with extension" << endl;
@@ -1305,13 +1429,8 @@ int mainlex()
         cout << "The given file is not a go source code file" << endl;
         return 1;
     }
-    analyze(fileName, OUTPUT_FILE_NAME);
-    return 0;
-}
-
-int main()
-{
-    // mainlex();
+    // lexical analyzer is called by teh parser.
     Parser parser = Parser("test.go");
     parser.parse();
+    return 0;
 }
