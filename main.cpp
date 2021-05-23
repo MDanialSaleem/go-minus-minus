@@ -838,6 +838,10 @@ private:
             D();
             B();
             break;
+        case TokenName::IN:
+            IN();
+            B();
+            break;
         case TokenName::IDENTIFIER:
             E();
             MatchToken(functionName, Token(TokenName::SEMI_COLON));
@@ -959,6 +963,68 @@ private:
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
+    void PAR_PRIME()
+    {
+        const string functionName = "PAR'";
+        EnterFunction(functionName);
+        if (tokenReader.peekNextToken().token == TokenName::COMMA)
+        {
+            MatchToken(functionName, TokenName::COMMA);
+            T();
+            MatchToken(functionName, TokenName::DECLARATION);
+            MatchToken(functionName, TokenName::IDENTIFIER);
+            PAR_PRIME();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
+    void PAR()
+    {
+        const string functionName = "PAR";
+        EnterFunction(functionName);
+        Token token = tokenReader.peekNextToken();
+        if (token.token == TokenName::CHAR || token.token == TokenName::INTEGER)
+        {
+            T();
+            MatchToken(functionName, TokenName::DECLARATION);
+            MatchToken(functionName, TokenName::IDENTIFIER);
+            PAR_PRIME();
+        }
+        else
+        {
+            Mark(Token());
+        }
+        LeaveFunction();
+    }
+    void FN()
+    {
+        const string functionName = "FN";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::FUNC);
+        T();
+        MatchToken(functionName, TokenName::DECLARATION);
+        MatchToken(functionName, TokenName::IDENTIFIER);
+        MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
+        PAR();
+        MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
+        MatchToken(functionName, TokenName::OPEN_BRACES);
+        B();
+        MatchToken(functionName, TokenName::CLOSE_BRACES);
+        LeaveFunction();
+    }
+    void IN()
+    {
+        const string functionName = "IN";
+        EnterFunction(functionName);
+        MatchToken(functionName, TokenName::IN);
+        MatchToken(functionName, TokenName::INPUT);
+        MatchToken(functionName, TokenName::IDENTIFIER);
+        MatchToken(functionName, TokenName::SEMI_COLON);
+        LeaveFunction();
+    }
     void S()
     {
         const string functionName = "S";
@@ -982,6 +1048,14 @@ private:
         case TokenName::INTEGER:
         case TokenName::CHAR:
             D();
+            S();
+            break;
+        case TokenName::FUNC:
+            FN();
+            S();
+            break;
+        case TokenName::IN:
+            IN();
             S();
             break;
         case TokenName::IDENTIFIER:
@@ -1084,6 +1158,7 @@ int mainlex()
 
 int main()
 {
+    // mainlex();
     Parser parser = Parser("test2.go");
     parser.parse();
 }
