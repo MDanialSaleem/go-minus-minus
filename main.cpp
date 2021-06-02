@@ -822,12 +822,34 @@ public:
     }
 };
 
+class Translator
+{
+private:
+    string currentTemp = "a";
+
+public:
+    string GetTemp()
+    {
+        string returner = currentTemp;
+        if (currentTemp[currentTemp.length() - 1] == 'z')
+        {
+            currentTemp += "a";
+        }
+        else
+        {
+            currentTemp[currentTemp.length() - 1]++;
+        }
+        return returner;
+    }
+};
+
 class Parser
 {
 private:
     int depth = -1;
     TokenReader tokenReader;
     SymbolTable symTable;
+    Translator translator;
     ofstream parseTreeOutputStream;
 
 public:
@@ -841,14 +863,16 @@ public:
     }
 
 private:
-    void P()
+    string P()
     {
         EnterFunction("P");
         auto token = tokenReader.peekNextToken();
+        string val;
         switch (token.token)
         {
         case TokenName::NUM:
         case TokenName::IDENTIFIER:
+            val = token.lexeme;
             Mark(tokenReader.consumeNextToken());
             break;
         case TokenName::OPEN_PARANTHESIS:
@@ -864,6 +888,7 @@ private:
             break;
         }
         LeaveFunction();
+        return val;
     }
     void M_PRIME()
     {
@@ -883,37 +908,51 @@ private:
         }
         LeaveFunction();
     }
-    void M()
+    string M()
     {
         EnterFunction("M");
-        P();
+        string finalMVal;
+        string pVal = P();
         M_PRIME();
         LeaveFunction();
+        finalMVal = pVal;
+        return finalMVal;
     }
-    void E_PRIME()
+    string E_PRIME(string initEPrimeVal)
     {
         EnterFunction("E'");
         auto token = tokenReader.peekNextToken();
+        string finalEPrimeVal;
         switch (token.token)
         {
         case TokenName::PLUS:
         case TokenName::MINUS:
+        {
             Mark(tokenReader.consumeNextToken());
-            M();
-            E_PRIME();
-            break;
-        default:
-            Mark(Token());
+            string mVal = M();
+            string ePrimeVal = E_PRIME(mVal);
+            string temp = translator.GetTemp();
+            cout << temp << "=" << initEPrimeVal << "+" << ePrimeVal << endl;
+            finalEPrimeVal = temp;
             break;
         }
+        default:
+        {
+            Mark(Token());
+            finalEPrimeVal = initEPrimeVal;
+            break;
+        }
+        }
         LeaveFunction();
+        return finalEPrimeVal;
     }
-    void E()
+    string E()
     {
         EnterFunction("E");
-        M();
-        E_PRIME();
+        string mval = M();
+        string val = E_PRIME(mval);
         LeaveFunction();
+        return val;
     }
     void N()
     {
@@ -1218,7 +1257,7 @@ private:
     {
         const string functionName = "A";
         EnterFunction(functionName);
-        MatchToken(functionName, TokenName::IDENTIFIER);
+        auto identifierToken = MatchToken(functionName, TokenName::IDENTIFIER);
         MatchToken(functionName, TokenName::ASSIGNMENT);
 
         Token tok = tokenReader.peekNextToken();
@@ -1228,7 +1267,8 @@ private:
         }
         else
         {
-            E();
+            auto eval = E();
+            cout << identifierToken.lexeme << "=" << eval << endl;
         }
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
@@ -1345,7 +1385,7 @@ private:
         vector<Token> lookAhead = tokenReader.peekNextMultiple(2);
         return lookAhead.size() == 2 && lookAhead[0].token == TokenName::IDENTIFIER && lookAhead[1].token == TokenName::OPEN_PARANTHESIS;
     }
-    void MatchToken(string functionName, Token token)
+    Token MatchToken(string functionName, Token token)
     {
         if (token.token == TokenName::NULLPROD)
         {
@@ -1356,6 +1396,7 @@ private:
         {
             symTable.evaluate(consumeToken);
             Mark(consumeToken);
+            return consumeToken;
         }
         else
         {
@@ -1419,16 +1460,16 @@ public:
 
 int main()
 {
-    string fileName;
-    cout << "Please enter the name of the input go file complete with extension" << endl;
+    // string fileName;
+    // cout << "Please enter the name of the input go file complete with extension" << endl;
 
-    cin >> fileName;
+    // cin >> fileName;
 
-    if (fileName.substr(fileName.length() - 3, 3) != ".go")
-    {
-        cout << "The given file is not a go source code file" << endl;
-        return 1;
-    }
+    // if (fileName.substr(fileName.length() - 3, 3) != ".go")
+    // {
+    //     cout << "The given file is not a go source code file" << endl;
+    //     return 1;
+    // }
     // lexical analyzer is called by teh parser.
     Parser parser = Parser("test.go");
     parser.parse();
