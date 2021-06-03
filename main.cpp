@@ -917,12 +917,12 @@ private:
     {
         EnterFunction("P");
         auto token = tokenReader.peekNextToken();
-        string val;
+        string finalPVal;
         switch (token.token)
         {
         case TokenName::NUM:
         case TokenName::IDENTIFIER:
-            val = token.lexeme;
+            finalPVal = token.lexeme;
             Mark(tokenReader.consumeNextToken());
             break;
         case TokenName::OPEN_PARANTHESIS:
@@ -938,34 +938,41 @@ private:
             break;
         }
         LeaveFunction();
-        return val;
+        return finalPVal;
     }
-    void M_PRIME()
+    string M_PRIME(string initMPrimeVal)
     {
         EnterFunction("M'");
         auto token = tokenReader.peekNextToken();
+        string finalMPrimeVal;
         switch (token.token)
         {
         case TokenName::PRODUCT:
         case TokenName::DIVIDE:
+        {
             Mark(tokenReader.consumeNextToken());
-            P();
-            M_PRIME();
-            break;
-        default:
-            Mark(Token());
+            string pVal = P();
+            string mPrimeVal = M_PRIME(pVal);
+            finalMPrimeVal = translator.WriteExpressionGetTemp(initMPrimeVal, token, mPrimeVal);
             break;
         }
+        default:
+        {
+            Mark(Token());
+            finalMPrimeVal = initMPrimeVal;
+            break;
+        }
+        }
         LeaveFunction();
+        return finalMPrimeVal;
     }
     string M()
     {
         EnterFunction("M");
         string finalMVal;
         string pVal = P();
-        M_PRIME();
+        finalMVal = M_PRIME(pVal);
         LeaveFunction();
-        finalMVal = pVal;
         return finalMVal;
     }
     string E_PRIME(string initEPrimeVal)
