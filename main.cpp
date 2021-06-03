@@ -11,6 +11,7 @@ const string EMPTY_LEXEME = "^";
 const string LEX_OUTPUT_FILE_NAME = "words.txt";
 const string PARSE_TREE_OUTPUT_FILE_NAME = "parsetree.txt";
 const string SYMBOL_TABLE_OUTPUT_FILE_NAME = "parser-symboltable.txt";
+const string TAC_FILE_NAME = "tac.txt";
 
 // On how state machines are represented:
 // They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
@@ -135,6 +136,18 @@ public:
             output = it->second;
         }
         return output;
+    }
+    static string getStrippedOutputMapping(const Token &token)
+    {
+        auto output = Token::getOutputMapping(token);
+        if (output[0] == '\'' && output[output.length() - 1] == '\'')
+        {
+            return output.substr(1, output.length() - 2);
+        }
+        else
+        {
+            return output;
+        }
     }
 };
 
@@ -826,8 +839,17 @@ class Translator
 {
 private:
     string currentTemp = "a";
+    ofstream outFile;
 
 public:
+    Translator()
+    {
+        outFile.open(TAC_FILE_NAME);
+        if (!outFile.is_open())
+        {
+            cout << "could not open symbol file" << endl;
+        }
+    }
     string GetTemp()
     {
         string returner = currentTemp;
@@ -840,6 +862,34 @@ public:
             currentTemp[currentTemp.length() - 1]++;
         }
         return returner;
+    }
+    string WriteExpressionGetTemp(string value1, Token op, string value2)
+    {
+        auto allowedOperetos = {TokenName::PRODUCT, TokenName::PLUS, TokenName::MINUS, TokenName::DIVIDE};
+        bool found = false;
+        for (auto allowedOperator : allowedOperetos)
+        {
+            if (op.token == allowedOperator)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            cout << "Invalid operator " << op.token << " found in write expression. This is likely a logical error" << endl;
+        }
+        string temp = GetTemp();
+        outFile << temp << "=" << value1 << Token::getStrippedOutputMapping(op) << value2 << endl;
+        return temp;
+    }
+    void WriteAssignment(Token identifier, string value)
+    {
+        if (identifier.token != TokenName::IDENTIFIER)
+        {
+            cout << "Unexpected toekn " << Token::getOutputMapping(identifier.token) << " in assignment, this is likely a logical error" << endl;
+        }
+        outFile << identifier.lexeme << "=" << value << endl;
     }
 };
 
@@ -931,9 +981,7 @@ private:
             Mark(tokenReader.consumeNextToken());
             string mVal = M();
             string ePrimeVal = E_PRIME(mVal);
-            string temp = translator.GetTemp();
-            cout << temp << "=" << initEPrimeVal << "+" << ePrimeVal << endl;
-            finalEPrimeVal = temp;
+            finalEPrimeVal = translator.WriteExpressionGetTemp(initEPrimeVal, token, ePrimeVal);
             break;
         }
         default:
@@ -1268,7 +1316,7 @@ private:
         else
         {
             auto eval = E();
-            cout << identifierToken.lexeme << "=" << eval << endl;
+            translator.WriteAssignment(identifierToken, eval);
         }
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
