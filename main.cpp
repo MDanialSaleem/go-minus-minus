@@ -3,7 +3,8 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <vector>
+#include <tuple>
+#include <algorithm>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
@@ -12,6 +13,7 @@ const string LEX_OUTPUT_FILE_NAME = "words.txt";
 const string PARSE_TREE_OUTPUT_FILE_NAME = "parsetree.txt";
 const string SYMBOL_TABLE_OUTPUT_FILE_NAME = "parser-symboltable.txt";
 const string TAC_FILE_NAME = "tac.txt";
+const string TEMP_TAC_FILE_NAME = "temp_tac.txt";
 
 // On how state machines are represented:
 // They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
@@ -840,14 +842,16 @@ class Translator
 private:
     string currentTemp = "a";
     ofstream outFile;
+    int lineNumber = 1;
+    vector<tuple<int, int>> backpatches;
 
 public:
     Translator()
     {
-        outFile.open(TAC_FILE_NAME);
+        outFile.open(TEMP_TAC_FILE_NAME);
         if (!outFile.is_open())
         {
-            cout << "could not open symbol file" << endl;
+            cout << "could not open translator file" << endl;
         }
     }
     string GetTemp()
@@ -862,6 +866,16 @@ public:
             currentTemp[currentTemp.length() - 1]++;
         }
         return returner;
+    }
+
+    int GetNextLineNumber()
+    {
+        return lineNumber;
+    }
+    void writeLineNumber()
+    {
+        outFile << lineNumber << ")";
+        lineNumber++;
     }
     string WriteExpressionGetTemp(string value1, Token op, string value2)
     {
@@ -880,6 +894,7 @@ public:
             cout << "Invalid operator " << op.token << " found in write expression. This is likely a logical error" << endl;
         }
         string temp = GetTemp();
+        writeLineNumber();
         outFile << temp << "=" << value1 << Token::getStrippedOutputMapping(op) << value2 << endl;
         return temp;
     }
@@ -889,7 +904,61 @@ public:
         {
             cout << "Unexpected toekn " << Token::getOutputMapping(identifier.token) << " in assignment, this is likely a logical error" << endl;
         }
+        writeLineNumber();
         outFile << identifier.lexeme << "=" << value << endl;
+    }
+    void WriteIF(string G1, Token RO, string G2)
+    {
+        if (RO.token != TokenName::RO)
+        {
+            cout << "Unexpected toekn " << Token::getOutputMapping(RO.token) << " in if, this is likely a logical error" << endl;
+        }
+        writeLineNumber();
+        outFile << "if" << G1 << RO.lexeme << G2 << "goto " << GetNextLineNumber() + 1 << endl;
+    }
+    int writeGoToGetLineNumber()
+    {
+        int returner = lineNumber;
+        writeLineNumber();
+        outFile << endl;
+        return returner;
+    }
+    void backpatch(int fromLineNumber, int toLineNumber)
+    {
+        backpatches.push_back(make_tuple(fromLineNumber, toLineNumber));
+    }
+    void backpatch()
+    {
+        this->outFile.close();
+        ifstream inFile;
+        ofstream outFile;
+        inFile.open(TEMP_TAC_FILE_NAME);
+        if (!inFile.is_open())
+        {
+            cout << "could not open temporary tac file for backpatchings" << endl;
+        }
+        outFile.open(TAC_FILE_NAME);
+        if (!outFile.is_open())
+        {
+            cout << "could not open tac file" << endl;
+        }
+        sort(backpatches.begin(), backpatches.end());
+        auto currentBackpatch = backpatches.begin();
+        while (!inFile.eof())
+        {
+            string line;
+            getline(inFile, line);
+            if (line == to_string(get<0>(*currentBackpatch)) + ")")
+            {
+                outFile << line
+                        << "goto" << get<1>(*currentBackpatch) << endl;
+                currentBackpatch++;
+            }
+            else
+            {
+                outFile << line << endl;
+            }
+        }
     }
 };
 
@@ -1050,20 +1119,22 @@ private:
         }
         LeaveFunction();
     }
-    void G()
+    string G()
     {
         const string functionName = "G";
         EnterFunction(functionName);
+        string finalGVal;
         Token tok = tokenReader.peekNextToken();
         if (tok.token == TokenName::LITERAL)
         {
-            MatchToken(functionName, tok);
+            finalGVal = MatchToken(functionName, tok).lexeme;
         }
         else
         {
-            E();
+            finalGVal = E();
         }
         LeaveFunction();
+        return finalGVal;
     }
     void B()
     {
@@ -1133,16 +1204,23 @@ private:
             MatchToken(functionName, TokenName::CLOSE_BRACES);
             break;
         case TokenName::ELIF:
+        {
             MatchToken(functionName, TokenName::ELIF);
-            G();
-            MatchToken(functionName, TokenName::RO);
-            G();
+            auto firstGVal = G();
+            auto ROToken = MatchToken(functionName, TokenName::RO);
+            auto secondGVal = G();
             MatchToken(functionName, TokenName::DECLARATION);
+            translator.WriteIF(firstGVal, ROToken, secondGVal);
+            auto cFalse = translator.writeGoToGetLineNumber();
             MatchToken(functionName, TokenName::OPEN_BRACES);
             B();
+            auto C_Next = translator.writeGoToGetLineNumber();
+            translator.backpatch(cFalse, translator.GetNextLineNumber());
             MatchToken(functionName, TokenName::CLOSE_BRACES);
             H();
+            translator.backpatch(C_Next, translator.GetNextLineNumber());
             break;
+        }
         default:
             MatchToken(functionName, Token());
             break;
@@ -1154,14 +1232,19 @@ private:
         const string functionName = "C";
         EnterFunction(functionName);
         MatchToken(functionName, TokenName::IF);
-        G();
-        MatchToken(functionName, TokenName::RO);
-        G();
+        auto firstGVal = G();
+        auto ROToken = MatchToken(functionName, TokenName::RO);
+        auto secondGVal = G();
         MatchToken(functionName, TokenName::DECLARATION);
+        translator.WriteIF(firstGVal, ROToken, secondGVal);
+        auto cFalse = translator.writeGoToGetLineNumber();
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
+        auto C_Next = translator.writeGoToGetLineNumber();
+        translator.backpatch(cFalse, translator.GetNextLineNumber());
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         H();
+        translator.backpatch(C_Next, translator.GetNextLineNumber());
         LeaveFunction();
     }
     void X()
@@ -1510,6 +1593,7 @@ public:
     void parse()
     {
         S();
+        translator.backpatch();
     }
 };
 
