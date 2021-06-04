@@ -907,20 +907,29 @@ public:
         writeLineNumber();
         outFile << identifier.lexeme << "=" << value << endl;
     }
-    void WriteIF(string G1, Token RO, string G2)
+    int WriteIfGetLineNumber(string G1, Token RO, string G2)
     {
+        int returner = lineNumber;
         if (RO.token != TokenName::RO)
         {
             cout << "Unexpected toekn " << Token::getOutputMapping(RO.token) << " in if, this is likely a logical error" << endl;
         }
         writeLineNumber();
         outFile << "if" << G1 << RO.lexeme << G2 << "goto " << GetNextLineNumber() + 1 << endl;
+        return returner;
     }
     int writeGoToGetLineNumber()
     {
         int returner = lineNumber;
         writeLineNumber();
         outFile << endl;
+        return returner;
+    }
+    int writeGoToGetLineNumber(int toLine)
+    {
+        int returner = lineNumber;
+        writeLineNumber();
+        outFile << "goto" << toLine << endl;
         return returner;
     }
     void backpatch(int fromLineNumber, int toLineNumber)
@@ -1210,7 +1219,7 @@ private:
             auto ROToken = MatchToken(functionName, TokenName::RO);
             auto secondGVal = G();
             MatchToken(functionName, TokenName::DECLARATION);
-            translator.WriteIF(firstGVal, ROToken, secondGVal);
+            translator.WriteIfGetLineNumber(firstGVal, ROToken, secondGVal);
             auto cFalse = translator.writeGoToGetLineNumber();
             MatchToken(functionName, TokenName::OPEN_BRACES);
             B();
@@ -1236,7 +1245,7 @@ private:
         auto ROToken = MatchToken(functionName, TokenName::RO);
         auto secondGVal = G();
         MatchToken(functionName, TokenName::DECLARATION);
-        translator.WriteIF(firstGVal, ROToken, secondGVal);
+        translator.WriteIfGetLineNumber(firstGVal, ROToken, secondGVal);
         auto cFalse = translator.writeGoToGetLineNumber();
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
@@ -1247,21 +1256,25 @@ private:
         translator.backpatch(C_Next, translator.GetNextLineNumber());
         LeaveFunction();
     }
-    void X()
+    string X()
     {
-        G();
+        return G();
     }
     void W()
     {
         const string functionName = "W";
         EnterFunction(functionName);
         MatchToken(functionName, TokenName::WHILE);
-        X();
-        MatchToken(functionName, TokenName::RO);
-        X();
+        auto X1Val = X();
+        auto RO = MatchToken(functionName, TokenName::RO);
+        auto X2Val = X();
         MatchToken(functionName, TokenName::DECLARATION);
+        auto W_if = translator.WriteIfGetLineNumber(X1Val, RO, X2Val);
+        auto W_end = translator.writeGoToGetLineNumber();
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
+        translator.writeGoToGetLineNumber(W_if);
+        translator.backpatch(W_end, translator.GetNextLineNumber());
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         LeaveFunction();
     }
