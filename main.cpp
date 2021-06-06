@@ -962,6 +962,16 @@ public:
         writeLineNumber();
         outFile << "PushParams  " << param << endl;
     }
+    void writeInput(string id)
+    {
+        writeLineNumber();
+        outFile << "In >> " << id << endl;
+    }
+    void writePrint(Token token, string printer)
+    {
+        writeLineNumber();
+        outFile << (token.token == TokenName::PRINT ? "print" : "println") << "( " << printer << ")" << endl;
+    }
     int getDeclarationSize(Token declaration)
     {
         switch (declaration.token)
@@ -1137,9 +1147,10 @@ private:
         LeaveFunction();
         return val;
     }
-    void N()
+    string N()
     {
         const string functionName = "N";
+        string N_FINAL_VALUE = "";
         EnterFunction(functionName);
         Token token = tokenReader.peekNextToken();
         TokenName matchableTokens[] = {TokenName::STRING, TokenName::IDENTIFIER, TokenName::LITERAL, TokenName::NUM};
@@ -1149,7 +1160,7 @@ private:
             if (token.token == it)
             {
                 found = true;
-                MatchToken(functionName, it);
+                N_FINAL_VALUE = MatchToken(functionName, it).lexeme;
             }
         }
         if (!found)
@@ -1157,6 +1168,7 @@ private:
             UnexptedToken(functionName, token);
         }
         LeaveFunction();
+        return N_FINAL_VALUE;
     }
     void L()
     {
@@ -1167,12 +1179,15 @@ private:
         {
         case TokenName::PRINT:
         case TokenName::PRINTLN:
-            MatchToken(functionName, token.token == TokenName::PRINT ? TokenName::PRINT : TokenName::PRINTLN);
+        {
+            auto printer = MatchToken(functionName, token.token == TokenName::PRINT ? TokenName::PRINT : TokenName::PRINTLN);
             MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
-            N();
+            auto NVAL = N();
             MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
             MatchToken(functionName, TokenName::SEMI_COLON);
+            translator.writePrint(printer, NVAL);
             break;
+        }
         default:
             break;
         }
@@ -1462,8 +1477,9 @@ private:
         EnterFunction(functionName);
         MatchToken(functionName, TokenName::IN);
         MatchToken(functionName, TokenName::INPUT);
-        MatchToken(functionName, TokenName::IDENTIFIER);
+        auto ID = MatchToken(functionName, TokenName::IDENTIFIER);
         MatchToken(functionName, TokenName::SEMI_COLON);
+        translator.writeInput(ID.lexeme);
         LeaveFunction();
     }
     void A()
