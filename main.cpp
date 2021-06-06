@@ -932,6 +932,37 @@ public:
         outFile << "goto" << toLine << endl;
         return returner;
     }
+    void writeFunctionLabel(string ID)
+    {
+        writeLineNumber();
+        outFile << ID << ":" << endl;
+    }
+    void writeFunctionHeader(int size)
+    {
+        writeLineNumber();
+        outFile << "BeginFunc " << size << endl;
+    }
+    void writeFunctionTail()
+    {
+        writeLineNumber();
+        outFile << "EndFunc" << endl;
+    }
+    int getDeclarationSize(Token declaration)
+    {
+        switch (declaration.token)
+        {
+        case TokenName::INTEGER:
+            return 4;
+            break;
+        case TokenName::CHAR:
+            return 1;
+            break;
+        default:
+            cout << "Not a declaration" << Token::getOutputMapping(declaration) << endl;
+            return 0;
+            break;
+        }
+    }
     void backpatch(int fromLineNumber, int toLineNumber)
     {
         backpatches.push_back(make_tuple(fromLineNumber, toLineNumber));
@@ -957,7 +988,8 @@ public:
         {
             string line;
             getline(inFile, line);
-            if (line == to_string(get<0>(*currentBackpatch)) + ")")
+            cout << line;
+            if (currentBackpatch != backpatches.end() && line == to_string(get<0>(*currentBackpatch)) + ")")
             {
                 outFile << line
                         << "goto" << get<1>(*currentBackpatch) << endl;
@@ -1278,24 +1310,26 @@ private:
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         LeaveFunction();
     }
-    void T()
+    Token T()
     {
         const string functionName = "Y";
         EnterFunction(functionName);
+        Token T_VAL;
         Token tok = tokenReader.peekNextToken();
         if (tok.token == TokenName::INTEGER)
         {
-            MatchToken(functionName, TokenName::INTEGER);
+            T_VAL = MatchToken(functionName, TokenName::INTEGER);
         }
         else if (tok.token == TokenName::CHAR)
         {
-            MatchToken(functionName, TokenName::CHAR);
+            T_VAL = MatchToken(functionName, TokenName::CHAR);
         }
         else
         {
             UnexptedToken(functionName, tok);
         }
         LeaveFunction();
+        return T_VAL;
     }
     void F()
     {
@@ -1325,41 +1359,48 @@ private:
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
-    void PAR_PRIME()
+    int PAR_PRIME()
     {
         const string functionName = "PAR'";
         EnterFunction(functionName);
+        int PAR_PRIME_VALUE = 0;
         if (tokenReader.peekNextToken().token == TokenName::COMMA)
         {
             MatchToken(functionName, TokenName::COMMA);
-            T();
+            auto declarationType = T();
             MatchToken(functionName, TokenName::DECLARATION);
+            PAR_PRIME_VALUE = translator.getDeclarationSize(declarationType);
             MatchToken(functionName, TokenName::IDENTIFIER);
-            PAR_PRIME();
+            PAR_PRIME_VALUE += PAR_PRIME();
         }
         else
         {
             Mark(Token());
         }
         LeaveFunction();
+        return PAR_PRIME_VALUE;
     }
-    void PAR()
+    int PAR()
     {
         const string functionName = "PAR";
         EnterFunction(functionName);
+        int PAR_VALUE = 0;
         Token token = tokenReader.peekNextToken();
         if (token.token == TokenName::CHAR || token.token == TokenName::INTEGER)
         {
-            T();
+            auto declarationType = T();
             MatchToken(functionName, TokenName::DECLARATION);
+            PAR_VALUE = translator.getDeclarationSize(declarationType);
             MatchToken(functionName, TokenName::IDENTIFIER);
-            PAR_PRIME();
+            PAR_VALUE += PAR_PRIME();
         }
         else
         {
+            PAR_VALUE = 0;
             Mark(Token());
         }
         LeaveFunction();
+        return PAR_VALUE;
     }
     void Q()
     {
@@ -1384,13 +1425,16 @@ private:
         MatchToken(functionName, TokenName::FUNC);
         T();
         MatchToken(functionName, TokenName::DECLARATION);
-        MatchToken(functionName, TokenName::IDENTIFIER);
+        auto ID = MatchToken(functionName, TokenName::IDENTIFIER);
+        translator.writeFunctionLabel(ID.lexeme);
         MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
-        PAR();
+        auto PAR_VALUE = PAR();
         MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
+        translator.writeFunctionHeader(PAR_VALUE);
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
         Q();
+        translator.writeFunctionTail();
         MatchToken(functionName, TokenName::CLOSE_BRACES);
         LeaveFunction();
     }
