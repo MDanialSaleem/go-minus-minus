@@ -865,7 +865,7 @@ public:
         {
             currentTemp[currentTemp.length() - 1]++;
         }
-        return returner;
+        return "_t" + returner;
     }
 
     int GetNextLineNumber()
@@ -947,6 +947,21 @@ public:
         writeLineNumber();
         outFile << "EndFunc" << endl;
     }
+    void writeFunctionCall(string ID)
+    {
+        writeLineNumber();
+        outFile << "LCall " << ID << endl;
+    }
+    void popParams(int bytes)
+    {
+        writeLineNumber();
+        outFile << "PopParams " << bytes << endl;
+    }
+    void pushParams(string param)
+    {
+        writeLineNumber();
+        outFile << "PushParams  " << param << endl;
+    }
     int getDeclarationSize(Token declaration)
     {
         switch (declaration.token)
@@ -969,6 +984,7 @@ public:
     }
     void backpatch()
     {
+
         this->outFile.close();
         ifstream inFile;
         ofstream outFile;
@@ -988,7 +1004,7 @@ public:
         {
             string line;
             getline(inFile, line);
-            cout << line;
+            cout << line << endl;
             if (currentBackpatch != backpatches.end() && line == to_string(get<0>(*currentBackpatch)) + ")")
             {
                 outFile << line
@@ -1000,6 +1016,8 @@ public:
                 outFile << line << endl;
             }
         }
+        outFile.close();
+        inFile.close();
     }
 };
 
@@ -1468,45 +1486,100 @@ private:
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
-    void O_PRIME_PRIME()
+    int O_PRIME_PRIME()
     {
         const string functionName = "O''";
+        auto finalO_PRIME_PRIMEVal = 0;
         EnterFunction(functionName);
         if (tokenReader.peekNextToken().token == TokenName::COMMA)
         {
             MatchToken(functionName, TokenName::COMMA);
-            MatchToken(functionName, TokenName::IDENTIFIER);
-            O_PRIME_PRIME();
+            auto nextToken = tokenReader.peekNextToken();
+            switch (nextToken.token)
+            {
+            case TokenName::IDENTIFIER:
+            case TokenName::NUM:
+            {
+                auto EVAL = E();
+                translator.pushParams(EVAL);
+                finalO_PRIME_PRIMEVal = 4;
+                break;
+            }
+            case TokenName::LITERAL:
+            {
+                auto token = MatchToken(functionName, TokenName::LITERAL);
+                translator.pushParams(token.lexeme);
+                finalO_PRIME_PRIMEVal = 1;
+                break;
+            }
+            case TokenName::STRING:
+            {
+                auto token = MatchToken(functionName, TokenName::STRING);
+                finalO_PRIME_PRIMEVal = nextToken.lexeme.length() - 2;
+                translator.pushParams(token.lexeme);
+                break;
+            }
+            default:
+                Mark(Token());
+                break;
+            }
+            finalO_PRIME_PRIMEVal += O_PRIME_PRIME();
         }
         else
         {
             Mark(Token());
         }
         LeaveFunction();
+        return finalO_PRIME_PRIMEVal;
     }
-    void O_PRIME()
+    int O_PRIME()
     {
         const string functionName = "O'";
+        auto finalO_Prime_Val = 0;
         EnterFunction(functionName);
-        if (tokenReader.peekNextToken().token == TokenName::IDENTIFIER)
+        auto nextToken = tokenReader.peekNextToken();
+        switch (nextToken.token)
         {
-            MatchToken(functionName, TokenName::IDENTIFIER);
-            O_PRIME_PRIME();
+        case TokenName::IDENTIFIER:
+        case TokenName::NUM:
+        {
+            auto EVAL = E();
+            translator.pushParams(EVAL);
+            finalO_Prime_Val = 4;
+            break;
         }
-        else
+        case TokenName::LITERAL:
         {
+            auto token = MatchToken(functionName, TokenName::LITERAL);
+            translator.pushParams(token.lexeme);
+            finalO_Prime_Val = 1;
+            break;
+        }
+        case TokenName::STRING:
+        {
+            auto token = MatchToken(functionName, TokenName::STRING);
+            finalO_Prime_Val = nextToken.lexeme.length() - 2;
+            translator.pushParams(token.lexeme);
+            break;
+        }
+        default:
             Mark(Token());
+            break;
         }
+        finalO_Prime_Val += O_PRIME_PRIME();
         LeaveFunction();
+        return finalO_Prime_Val;
     }
     void O()
     {
         const string functionName = "O";
         EnterFunction(functionName);
-        MatchToken(functionName, TokenName::IDENTIFIER);
+        auto functionID = MatchToken(functionName, TokenName::IDENTIFIER);
         MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
-        O_PRIME();
+        auto O_PRIME_VAL = O_PRIME();
         MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
+        translator.writeFunctionCall(functionID.lexeme);
+        translator.popParams(O_PRIME_VAL);
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
@@ -1667,7 +1740,15 @@ int main()
     //     return 1;
     // }
     // lexical analyzer is called by teh parser.
-    Parser parser = Parser("test.go");
-    parser.parse();
-    return 0;
+
+    try
+    {
+        Parser parser = Parser("test.go");
+        parser.parse();
+        return 0;
+    }
+    catch (exception e)
+    {
+        cout << (e.what());
+    }
 }
