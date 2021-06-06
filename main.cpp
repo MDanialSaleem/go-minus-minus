@@ -108,6 +108,15 @@ const map<string, TokenName> keywordsMapper = {
     {"integer", TokenName::INTEGER},
     {"char", TokenName::CHAR}};
 
+const string LESS_THAN_LEXEME = "LT";
+const string LESS_THAN_EQ_LEXEME = "LE";
+const string GREATER_THAN_LEXEME = "GT";
+const string GREATER_THAN_EQ_LEXEME = "GE";
+const string EQUAL_LEXEME = "EQ";
+const string NOT_EQUAL_LEXEME = "NE";
+const map<string, string> RO_OUTPUT_MAPPER = {
+    {LESS_THAN_LEXEME, "<"}, {LESS_THAN_EQ_LEXEME, "<="}, {GREATER_THAN_LEXEME, ">"}, {GREATER_THAN_EQ_LEXEME, ">="}, {EQUAL_LEXEME, "="}, {NOT_EQUAL_LEXEME, "/="}};
+
 class Token
 {
 public:
@@ -130,6 +139,20 @@ public:
         auto it = outputMapper.find(token.token);
         string output;
         if (it == outputMapper.end())
+        {
+            output = "Output mapping not defined for " + token.token;
+        }
+        else
+        {
+            output = it->second;
+        }
+        return output;
+    }
+    static string getROLexemeOutput(const Token &token)
+    {
+        auto it = RO_OUTPUT_MAPPER.find(token.lexeme);
+        string output;
+        if (it == RO_OUTPUT_MAPPER.end())
         {
             output = "Output mapping not defined for " + token.token;
         }
@@ -386,7 +409,7 @@ Token isCommentOrNotEqOrDivide(ifstream &fileStream)
             else if (c == '=')
             {
                 lexeme += fileStream.get();
-                return Token(TokenName::RO, "NE");
+                return Token(TokenName::RO, NOT_EQUAL_LEXEME);
             }
             else
             {
@@ -470,18 +493,18 @@ Token isROorInput(ifstream &fileStream)
             if (c == '=')
             {
                 fileStream.get();
-                return Token(TokenName::RO, "LE");
+                return Token(TokenName::RO, LESS_THAN_EQ_LEXEME);
             }
             else
             {
-                return Token(TokenName::RO, "LT");
+                return Token(TokenName::RO, LESS_THAN_LEXEME);
             }
         case 23:
             c = fileStream.peek();
             if (c == '=')
             {
                 fileStream.get();
-                return Token(TokenName::RO, "GE");
+                return Token(TokenName::RO, GREATER_THAN_EQ_LEXEME);
             }
             else if (c == '>')
             {
@@ -490,10 +513,10 @@ Token isROorInput(ifstream &fileStream)
             }
             else
             {
-                return Token(TokenName::RO, "GT");
+                return Token(TokenName::RO, GREATER_THAN_LEXEME);
             }
         case 27:
-            return Token(TokenName::RO, "EQ");
+            return Token(TokenName::RO, EQUAL_LEXEME);
         default:
             return Token(TokenName::INVALID);
         }
@@ -915,7 +938,7 @@ public:
             cout << "Unexpected toekn " << Token::getOutputMapping(RO.token) << " in if, this is likely a logical error" << endl;
         }
         writeLineNumber();
-        outFile << "if" << G1 << RO.lexeme << G2 << "goto " << GetNextLineNumber() + 1 << endl;
+        outFile << "if " << G1 << " " << Token::getROLexemeOutput(RO) << " " << G2 << " goto " << GetNextLineNumber() + 1 << endl;
         return returner;
     }
     int writeGoToGetLineNumber()
@@ -1014,7 +1037,6 @@ public:
         {
             string line;
             getline(inFile, line);
-            cout << line << endl;
             if (currentBackpatch != backpatches.end() && line == to_string(get<0>(*currentBackpatch)) + ")")
             {
                 outFile << line
@@ -1028,6 +1050,7 @@ public:
         }
         outFile.close();
         inFile.close();
+        remove(TEMP_TAC_FILE_NAME.c_str());
     }
 };
 
@@ -1492,7 +1515,8 @@ private:
         Token tok = tokenReader.peekNextToken();
         if (tok.token == TokenName::LITERAL)
         {
-            MatchToken(functionName, TokenName::LITERAL);
+            auto literal = MatchToken(functionName, TokenName::LITERAL);
+            translator.WriteAssignment(identifierToken, literal.lexeme);
         }
         else
         {
