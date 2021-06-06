@@ -14,6 +14,7 @@ const string PARSE_TREE_OUTPUT_FILE_NAME = "parsetree.txt";
 const string SYMBOL_TABLE_OUTPUT_FILE_NAME = "parser-symboltable.txt";
 const string TAC_FILE_NAME = "tac.txt";
 const string TEMP_TAC_FILE_NAME = "temp_tac.txt";
+const string TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME = "translator-symboltable.txt";
 
 // On how state machines are represented:
 // They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
@@ -865,8 +866,10 @@ class Translator
 private:
     string currentTemp = "a";
     ofstream outFile;
+    ofstream symbolTable;
     int lineNumber = 1;
     vector<tuple<int, int>> backpatches;
+    int address = 0;
 
 public:
     Translator()
@@ -876,6 +879,12 @@ public:
         {
             cout << "could not open translator file" << endl;
         }
+        symbolTable.open(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
+        if (!symbolTable.is_open())
+        {
+            cout << "could not open  translator symbol table file" << endl;
+        }
+        symbolTable << "Name\tType\tSize\t" << endl;
     }
     string GetTemp()
     {
@@ -1010,6 +1019,16 @@ public:
             return 0;
             break;
         }
+    }
+    int getAddress(Token declaration)
+    {
+        auto returner = address;
+        address += getDeclarationSize(declaration);
+        return returner;
+    }
+    void writeToSymbolTable(Token declaration, string ID)
+    {
+        symbolTable << ID << "\t" << Token::getOutputMapping(declaration) << "\t" << getAddress(declaration) << endl;
     }
     void backpatch(int fromLineNumber, int toLineNumber)
     {
@@ -1408,9 +1427,10 @@ private:
     {
         const string functionName = DECLARATION_PRODUCTION_NAME;
         EnterFunction(functionName);
-        T();
+        auto declarationToken = T();
         MatchToken(functionName, TokenName::DECLARATION);
-        MatchToken(functionName, TokenName::IDENTIFIER);
+        auto identifierToken = MatchToken(functionName, TokenName::IDENTIFIER);
+        translator.writeToSymbolTable(declarationToken, identifierToken.lexeme);
         F();
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
@@ -1426,7 +1446,8 @@ private:
             auto declarationType = T();
             MatchToken(functionName, TokenName::DECLARATION);
             PAR_PRIME_VALUE = translator.getDeclarationSize(declarationType);
-            MatchToken(functionName, TokenName::IDENTIFIER);
+            auto identifier = MatchToken(functionName, TokenName::IDENTIFIER);
+            translator.writeToSymbolTable(declarationType, identifier.lexeme);
             PAR_PRIME_VALUE += PAR_PRIME();
         }
         else
@@ -1447,7 +1468,8 @@ private:
             auto declarationType = T();
             MatchToken(functionName, TokenName::DECLARATION);
             PAR_VALUE = translator.getDeclarationSize(declarationType);
-            MatchToken(functionName, TokenName::IDENTIFIER);
+            auto identifier = MatchToken(functionName, TokenName::IDENTIFIER);
+            translator.writeToSymbolTable(declarationType, identifier.lexeme);
             PAR_VALUE += PAR_PRIME();
         }
         else
