@@ -5,6 +5,7 @@
 #include <map>
 #include <tuple>
 #include <algorithm>
+#include <iomanip>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
@@ -884,7 +885,14 @@ public:
         {
             cout << "could not open  translator symbol table file" << endl;
         }
-        symbolTable << "Name\tType\tSize\t" << endl;
+        symbolTable
+            << left
+            << setw(20)
+            << "Name"
+            << left
+            << setw(20)
+            << "Type"
+            << "Address" << endl;
     }
     string GetTemp()
     {
@@ -979,10 +987,18 @@ public:
         writeLineNumber();
         outFile << "EndFunc" << endl;
     }
-    void writeFunctionCall(string ID)
+    string writeFunctionCallGetTemp(string ID)
     {
         writeLineNumber();
-        outFile << "LCall " << ID << endl;
+        auto temp = GetTemp();
+        outFile << temp << " = "
+                << " LCall " << ID << endl;
+        return temp;
+    }
+    void writeReturn(string val)
+    {
+        writeLineNumber();
+        outFile << "RETURN " << val << endl;
     }
     void popParams(int bytes)
     {
@@ -1028,7 +1044,7 @@ public:
     }
     void writeToSymbolTable(Token declaration, string ID)
     {
-        symbolTable << ID << "\t" << Token::getOutputMapping(declaration) << "\t" << getAddress(declaration) << endl;
+        symbolTable << left << setw(20) << ID << left << setw(20) << Token::getOutputMapping(declaration) << getAddress(declaration) << endl;
     }
     void backpatch(int fromLineNumber, int toLineNumber)
     {
@@ -1487,7 +1503,8 @@ private:
         if (tokenReader.peekNextToken().token == TokenName::RET)
         {
             MatchToken(functionName, TokenName::RET);
-            G();
+            auto GVAL = G();
+            translator.writeReturn(GVAL);
             MatchToken(functionName, TokenName::SEMI_COLON);
         }
         else
@@ -1534,18 +1551,27 @@ private:
         auto identifierToken = MatchToken(functionName, TokenName::IDENTIFIER);
         MatchToken(functionName, TokenName::ASSIGNMENT);
 
-        Token tok = tokenReader.peekNextToken();
-        if (tok.token == TokenName::LITERAL)
+        if (isIncomingFunctionCall())
         {
-            auto literal = MatchToken(functionName, TokenName::LITERAL);
-            translator.WriteAssignment(identifierToken, literal.lexeme);
+            auto temp = O();
+            translator.WriteAssignment(identifierToken, temp);
         }
         else
         {
-            auto eval = E();
-            translator.WriteAssignment(identifierToken, eval);
+            Token tok = tokenReader.peekNextToken();
+            if (tok.token == TokenName::LITERAL)
+            {
+                auto literal = MatchToken(functionName, TokenName::LITERAL);
+                translator.WriteAssignment(identifierToken, literal.lexeme);
+            }
+            else
+            {
+                auto eval = E();
+                translator.WriteAssignment(identifierToken, eval);
+            }
+            MatchToken(functionName, TokenName::SEMI_COLON);
         }
-        MatchToken(functionName, TokenName::SEMI_COLON);
+
         LeaveFunction();
     }
     int O_PRIME_PRIME()
@@ -1632,18 +1658,20 @@ private:
         LeaveFunction();
         return finalO_Prime_Val;
     }
-    void O()
+    string O()
     {
         const string functionName = "O";
         EnterFunction(functionName);
+        string finalOVal = "";
         auto functionID = MatchToken(functionName, TokenName::IDENTIFIER);
         MatchToken(functionName, TokenName::OPEN_PARANTHESIS);
         auto O_PRIME_VAL = O_PRIME();
         MatchToken(functionName, TokenName::CLOSE_PARANTHESIS);
-        translator.writeFunctionCall(functionID.lexeme);
+        finalOVal = translator.writeFunctionCallGetTemp(functionID.lexeme);
         translator.popParams(O_PRIME_VAL);
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
+        return finalOVal;
     }
     void S()
     {
