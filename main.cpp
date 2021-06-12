@@ -905,7 +905,11 @@ public:
         {
             currentTemp[currentTemp.length() - 1]++;
         }
-        return "_t" + returner;
+        returner = "_t" + returner;
+        // for now assuming that only int based expressions are allowed and also
+        // functions can only return ints
+        writeToSymbolTable(TokenName::INTEGER, returner);
+        return returner;
     }
 
     int GetNextLineNumber()
@@ -1422,7 +1426,7 @@ private:
         LeaveFunction();
         return T_VAL;
     }
-    void F()
+    void F(Token F_VAL)
     {
         const string functionName = "F";
         EnterFunction(functionName);
@@ -1430,8 +1434,9 @@ private:
         if (token.token == TokenName::COMMA)
         {
             MatchToken(functionName, TokenName::COMMA);
-            MatchToken(functionName, TokenName::IDENTIFIER);
-            F();
+            auto identifierToken = MatchToken(functionName, TokenName::IDENTIFIER);
+            translator.writeToSymbolTable(F_VAL, identifierToken.lexeme);
+            F(F_VAL);
         }
         else
         {
@@ -1447,7 +1452,7 @@ private:
         MatchToken(functionName, TokenName::DECLARATION);
         auto identifierToken = MatchToken(functionName, TokenName::IDENTIFIER);
         translator.writeToSymbolTable(declarationToken, identifierToken.lexeme);
-        F();
+        F(declarationToken);
         MatchToken(functionName, TokenName::SEMI_COLON);
         LeaveFunction();
     }
@@ -1831,14 +1836,7 @@ int main()
     // }
     // lexical analyzer is called by teh parser.
 
-    try
-    {
-        Parser parser = Parser("test.go");
-        parser.parse();
-        return 0;
-    }
-    catch (exception e)
-    {
-        cout << (e.what());
-    }
+    Parser parser = Parser("test.go");
+    parser.parse();
+    return 0;
 }
