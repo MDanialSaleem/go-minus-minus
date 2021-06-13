@@ -1038,7 +1038,7 @@ public:
     void writePrint(Token token, string printer)
     {
         writeLineNumber();
-        outFile << (token.token == TokenName::PRINT ? "print" : "println") << "( " << printer << ")" << endl;
+        outFile << (token.token == TokenName::PRINT ? "print" : "println") << "(" << printer << ")" << endl;
     }
     int getDeclarationSize(Token declaration)
     {
@@ -1852,6 +1852,7 @@ enum class OpCode
     ASSIGNMENT,
     VARIABLE_ASSIGNMENT,
     LITERAL_ASSIGNMENT,
+    PRINT,
     INVALID
 };
 
@@ -1864,6 +1865,7 @@ class MachineCodeGenerator
 {
     ifstream TACFile;
     ofstream MCFile;
+    map<string, int> symTable;
 
 public:
     MachineCodeGenerator()
@@ -1878,6 +1880,20 @@ public:
         {
             cout << "Machine code file could not be opened" << endl;
         }
+        ifstream translatorSymTable(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
+        if (!translatorSymTable.is_open())
+        {
+            cout << "Translator symbol table could not be opened in machine code generator" << endl;
+        }
+        string headerLine;
+        getline(translatorSymTable, headerLine);
+        while (!translatorSymTable.eof())
+        {
+            string name, type;
+            int address;
+            translatorSymTable >> name >> type >> address;
+            symTable[name] = address;
+        }
     }
 
     void generate()
@@ -1889,6 +1905,7 @@ public:
             string strippedLine = originalLine.substr(originalLine.find(")") + 1);
             regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*)");
             regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+)");
+            regex printRegex("print\\(([_a-zA-Z]\\w*)\\)");
             smatch matches;
 
             if (strippedLine == "")
@@ -1899,13 +1916,18 @@ public:
             {
                 string lefthand = matches[1];
                 string righthand = matches[2];
-                writeQuadruple(OpCode::ASSIGNMENT, lefthand, righthand, OpCode::VARIABLE_ASSIGNMENT);
+                writeQuadruple(OpCode::ASSIGNMENT, symTable[lefthand], symTable[righthand], OpCode::VARIABLE_ASSIGNMENT);
             }
             else if (regex_search(strippedLine, matches, literalAssignmentRegex))
             {
                 string lefthand = matches[1];
                 string righthand = matches[2];
-                writeQuadruple(OpCode::ASSIGNMENT, lefthand, righthand, OpCode::LITERAL_ASSIGNMENT);
+                writeQuadruple(OpCode::ASSIGNMENT, symTable[lefthand], stoi(righthand), OpCode::LITERAL_ASSIGNMENT);
+            }
+            else if (regex_search(strippedLine, matches, printRegex))
+            {
+                string variable = matches[1];
+                writeQuadruple(OpCode::PRINT, symTable[variable]);
             }
             else
             {
@@ -1920,9 +1942,13 @@ private:
         MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << val3 << endl;
     }
     // invalid opcode is for instructions with only three operands.
-    void writeQuadruple(OpCode opcode, string val1, string val2, OpCode val3 = OpCode::INVALID)
+    void writeQuadruple(OpCode opcode, int val1, int val2, OpCode val3 = OpCode::INVALID)
     {
         MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << (val3 == OpCode::INVALID ? "" : to_string(static_cast<int>(val3))) << endl;
+    }
+    void writeQuadruple(OpCode opcode, int val1)
+    {
+        MCFile << opcode << "\t" << val1 << "\t" << endl;
     }
 };
 int main()
