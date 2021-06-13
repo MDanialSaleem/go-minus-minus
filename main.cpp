@@ -1861,11 +1861,33 @@ std::ostream &operator<<(std::ostream &os, OpCode opcode)
     return os << static_cast<int>(opcode);
 }
 
+map<string, int> getTranslatorSymbolTable()
+{
+    map<string, int> symTable;
+    ifstream translatorSymTable(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
+    if (!translatorSymTable.is_open())
+    {
+        cout << "Translator symbol table could not be opened in machine code generator" << endl;
+    }
+    string headerLine;
+    getline(translatorSymTable, headerLine);
+    while (!translatorSymTable.eof())
+    {
+        string name, type;
+        int address;
+        translatorSymTable >> name >> type >> address;
+        if (name != "")
+        {
+            symTable[name] = address;
+        }
+    }
+    return symTable;
+}
 class MachineCodeGenerator
 {
     ifstream TACFile;
     ofstream MCFile;
-    map<string, int> symTable;
+    map<string, int> symTable = getTranslatorSymbolTable();
 
 public:
     MachineCodeGenerator()
@@ -1879,20 +1901,6 @@ public:
         if (!MCFile.is_open())
         {
             cout << "Machine code file could not be opened" << endl;
-        }
-        ifstream translatorSymTable(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
-        if (!translatorSymTable.is_open())
-        {
-            cout << "Translator symbol table could not be opened in machine code generator" << endl;
-        }
-        string headerLine;
-        getline(translatorSymTable, headerLine);
-        while (!translatorSymTable.eof())
-        {
-            string name, type;
-            int address;
-            translatorSymTable >> name >> type >> address;
-            symTable[name] = address;
         }
     }
 
@@ -1951,6 +1959,86 @@ private:
         MCFile << opcode << "\t" << val1 << "\t" << endl;
     }
 };
+
+class VirtualMachine
+{
+    ifstream machineCode;
+    map<string, int> symTable = getTranslatorSymbolTable();
+    vector<int> dataMemory;
+    void store(int source, int destination, OpCode option)
+    {
+        destination = destination / 4;
+        switch (option)
+        {
+        case OpCode::VARIABLE_ASSIGNMENT:
+            source = source / 4;
+            dataMemory[destination] = dataMemory[source];
+            break;
+        case OpCode::LITERAL_ASSIGNMENT:
+            dataMemory[destination] = source;
+            break;
+        default:
+            cout << "Invalid option " << option << " for assignment" << endl;
+            break;
+        }
+    }
+    int retrieve(int source)
+    {
+        return dataMemory[source / 4];
+    }
+
+    void execute(array<int, 4> quadruple)
+    {
+        auto opcode = static_cast<OpCode>(quadruple[0]);
+        switch (opcode)
+        {
+        case OpCode::ASSIGNMENT:
+        {
+            auto destination = quadruple[1];
+            auto source = quadruple[2];
+            auto option = static_cast<OpCode>(quadruple[3]);
+            store(source, destination, option);
+            break;
+        }
+        case OpCode::PRINT:
+            cout << retrieve(quadruple[1]);
+            break;
+        default:
+            cout << "Invalid opcode " << opcode << endl;
+            break;
+        }
+    }
+
+public:
+    VirtualMachine()
+    {
+        machineCode.open(MACHINE_CODE_FILE_NAME);
+        if (!machineCode.is_open())
+        {
+            cout << "Could not open machine code in virtual machine" << endl;
+        }
+        dataMemory.resize(symTable.size());
+    }
+    void execute()
+    {
+        while (!machineCode.eof())
+        {
+            string line;
+            getline(machineCode, line);
+            if (line == "")
+            {
+                continue;
+            }
+            stringstream quadrupleStream(line);
+            array<int, 4> quadruple;
+            for (int i = 0; i < 4; i++)
+            {
+                quadrupleStream >> quadruple[i];
+            }
+            execute(quadruple);
+        }
+    }
+};
 int main()
 {
     // string fileName;
@@ -1965,9 +2053,11 @@ int main()
     // }
     // lexical analyzer is called by teh parser.
 
-    Parser parser = Parser("test.go");
-    parser.parse();
-    MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
-    machineCodeGenerator.generate();
+    // Parser parser = Parser("test.go");
+    // parser.parse();
+    // MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
+    // machineCodeGenerator.generate();
+    VirtualMachine vm;
+    vm.execute();
     return 0;
 }
