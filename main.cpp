@@ -6,6 +6,7 @@
 #include <tuple>
 #include <algorithm>
 #include <iomanip>
+#include <regex>
 using namespace std;
 
 const string EMPTY_LEXEME = "^";
@@ -16,6 +17,7 @@ const string SYMBOL_TABLE_OUTPUT_FILE_NAME = "parser-symboltable.txt";
 const string TAC_FILE_NAME = "tac.txt";
 const string TEMP_TAC_FILE_NAME = "temp_tac.txt";
 const string TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME = "translator-symboltable.txt";
+const string MACHINE_CODE_FILE_NAME = "machine-code.txt";
 
 // On how state machines are represented:
 // They follow the method tuaght by sir, with state numbers coming from DFAs submitted earlier.
@@ -892,6 +894,8 @@ public:
             << left
             << setw(20)
             << "Type"
+            << left
+            << setw(20)
             << "Address" << endl;
     }
     string GetTemp()
@@ -940,6 +944,18 @@ public:
         string temp = GetTemp();
         writeLineNumber();
         outFile << temp << "=" << value1 << Token::getStrippedOutputMapping(op) << value2 << endl;
+        return temp;
+    }
+    string WriteLiteralGetTemp(Token literal)
+    {
+        // for now only supporting numeric literals.
+        if (literal.token != TokenName::NUM)
+        {
+            cout << "Invalid operator " << literal.token << "found in write literal. this is liekly a logical error" << endl;
+        }
+        string temp = GetTemp();
+        writeLineNumber();
+        outFile << temp << "=" << literal.lexeme << endl;
         return temp;
     }
     void WriteAssignment(Token identifier, string value)
@@ -1048,7 +1064,14 @@ public:
     }
     void writeToSymbolTable(Token declaration, string ID)
     {
-        symbolTable << left << setw(20) << ID << left << setw(20) << Token::getOutputMapping(declaration) << getAddress(declaration) << endl;
+        symbolTable << left
+                    << setw(20)
+                    << ID
+                    << left
+                    << setw(20)
+                    << Token::getOutputMapping(declaration)
+                    << getAddress(declaration)
+                    << endl;
     }
     void backpatch(int fromLineNumber, int toLineNumber)
     {
@@ -1112,6 +1135,12 @@ public:
         }
     }
 
+    void parse()
+    {
+        S();
+        translator.backpatch();
+    }
+
 private:
     string P()
     {
@@ -1121,6 +1150,9 @@ private:
         switch (token.token)
         {
         case TokenName::NUM:
+            finalPVal = translator.WriteLiteralGetTemp(token);
+            Mark(tokenReader.consumeNextToken());
+            break;
         case TokenName::IDENTIFIER:
             finalPVal = token.lexeme;
             Mark(tokenReader.consumeNextToken());
@@ -1813,15 +1845,86 @@ private:
         cout << "Unexpected token " << token << "occured in" << functionName << endl;
         exit(1);
     }
-
-public:
-    void parse()
-    {
-        S();
-        translator.backpatch();
-    }
 };
 
+enum class OpCode
+{
+    ASSIGNMENT,
+    VARIABLE_ASSIGNMENT,
+    LITERAL_ASSIGNMENT,
+    INVALID
+};
+
+std::ostream &operator<<(std::ostream &os, OpCode opcode)
+{
+    return os << static_cast<int>(opcode);
+}
+
+class MachineCodeGenerator
+{
+    ifstream TACFile;
+    ofstream MCFile;
+
+public:
+    MachineCodeGenerator()
+    {
+        TACFile.open(TAC_FILE_NAME);
+        if (!TACFile.is_open())
+        {
+            cout << "Three Address Code file cannot be opened by machine code generator" << endl;
+        }
+        MCFile.open(MACHINE_CODE_FILE_NAME);
+        if (!MCFile.is_open())
+        {
+            cout << "Machine code file could not be opened" << endl;
+        }
+    }
+
+    void generate()
+    {
+        while (!TACFile.eof())
+        {
+            string originalLine;
+            getline(TACFile, originalLine);
+            string strippedLine = originalLine.substr(originalLine.find(")") + 1);
+            regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*)");
+            regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+)");
+            smatch matches;
+
+            if (strippedLine == "")
+            {
+                continue;
+            }
+            if (regex_search(strippedLine, matches, variableAssignmentRegex))
+            {
+                string lefthand = matches[1];
+                string righthand = matches[2];
+                writeQuadruple(OpCode::ASSIGNMENT, lefthand, righthand, OpCode::VARIABLE_ASSIGNMENT);
+            }
+            else if (regex_search(strippedLine, matches, literalAssignmentRegex))
+            {
+                string lefthand = matches[1];
+                string righthand = matches[2];
+                writeQuadruple(OpCode::ASSIGNMENT, lefthand, righthand, OpCode::LITERAL_ASSIGNMENT);
+            }
+            else
+            {
+                std::cout << "Match not found for {" << strippedLine << "}this is a logical error" << endl;
+            }
+        }
+    }
+
+private:
+    void writeQuadruple(OpCode opcode, string val1, string val2, string val3)
+    {
+        MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << val3 << endl;
+    }
+    // invalid opcode is for instructions with only three operands.
+    void writeQuadruple(OpCode opcode, string val1, string val2, OpCode val3 = OpCode::INVALID)
+    {
+        MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << (val3 == OpCode::INVALID ? "" : to_string(static_cast<int>(val3))) << endl;
+    }
+};
 int main()
 {
     // string fileName;
@@ -1838,5 +1941,7 @@ int main()
 
     Parser parser = Parser("test.go");
     parser.parse();
+    MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
+    machineCodeGenerator.generate();
     return 0;
 }
