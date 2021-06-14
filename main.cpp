@@ -1033,7 +1033,7 @@ public:
     void writeInput(string id)
     {
         writeLineNumber();
-        outFile << "In >> " << id << endl;
+        outFile << "in>>" << id << endl;
     }
     void writePrint(Token token, string printer)
     {
@@ -1857,6 +1857,7 @@ enum class OpCode
     SUBTRACT,
     PRODUCT,
     DIVIDE,
+    INPUT,
     INVALID
 };
 
@@ -1924,6 +1925,7 @@ public:
             regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*);");
             regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+);");
             regex printRegex("print\\(([_a-zA-Z]\\w*)\\);");
+            regex inputRegex("in>>([_a-zA-Z]\\w*)");
             smatch matches;
 
             strippedLine += ";"; // doing this beacause otherwsie regex matches half expressions.
@@ -1943,6 +1945,11 @@ public:
             {
                 string variable = matches[1];
                 writeQuadruple(OpCode::PRINT, symTable[variable]);
+            }
+            else if (regex_search(strippedLine, matches, inputRegex))
+            {
+                string variable = matches[1];
+                writeQuadruple(OpCode::INPUT, symTable[variable]);
             }
             else if (regex_search(strippedLine, matches, expressionRegex))
             {
@@ -2047,7 +2054,12 @@ class VirtualMachine
             ALU(quadruple);
             break;
         case OpCode::PRINT:
-            cout << retrieve(quadruple[1]);
+            cout << retrieve(quadruple[1]) << endl;
+            break;
+        case OpCode::INPUT:
+            int temp;
+            cin >> temp;
+            store(temp, quadruple[1], OpCode::LITERAL_ASSIGNMENT);
             break;
         default:
             cout << "Invalid opcode " << opcode << endl;
@@ -2103,6 +2115,7 @@ int main()
     parser.parse();
     MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
     machineCodeGenerator.generate();
+    cout << "Running the program" << endl;
     VirtualMachine vm;
     vm.execute();
     return 0;
