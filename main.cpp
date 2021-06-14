@@ -1853,9 +1853,14 @@ enum class OpCode
     VARIABLE_ASSIGNMENT,
     LITERAL_ASSIGNMENT,
     PRINT,
+    ADD,
+    SUBTRACT,
+    PRODUCT,
+    DIVIDE,
     INVALID
 };
 
+const map<string, OpCode> arithmeticMapper = {{"+", OpCode::ADD}, {"-", OpCode::SUBTRACT}, {"*", OpCode::PRODUCT}, {"/", OpCode::DIVIDE}};
 std::ostream &operator<<(std::ostream &os, OpCode opcode)
 {
     return os << static_cast<int>(opcode);
@@ -1910,16 +1915,18 @@ public:
         {
             string originalLine;
             getline(TACFile, originalLine);
-            string strippedLine = originalLine.substr(originalLine.find(")") + 1);
-            regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*)");
-            regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+)");
-            regex printRegex("print\\(([_a-zA-Z]\\w*)\\)");
-            smatch matches;
-
-            if (strippedLine == "")
+            if (originalLine == "")
             {
                 continue;
             }
+            string strippedLine = originalLine.substr(originalLine.find(")") + 1);
+            regex expressionRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*)(-|\\+|\\*|/)([_a-zA-Z]\\w*);");
+            regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*);");
+            regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+);");
+            regex printRegex("print\\(([_a-zA-Z]\\w*)\\);");
+            smatch matches;
+
+            strippedLine += ";"; // doing this beacause otherwsie regex matches half expressions.
             if (regex_search(strippedLine, matches, variableAssignmentRegex))
             {
                 string lefthand = matches[1];
@@ -1937,6 +1944,14 @@ public:
                 string variable = matches[1];
                 writeQuadruple(OpCode::PRINT, symTable[variable]);
             }
+            else if (regex_search(strippedLine, matches, expressionRegex))
+            {
+                string lefthand = matches[1];
+                string var1 = matches[2];
+                string op = matches[3];
+                string var2 = matches[4];
+                writeQuadruple(arithmeticMapper.find(op)->second, symTable[lefthand], symTable[var1], symTable[var2]);
+            }
             else
             {
                 std::cout << "Match not found for {" << strippedLine << "}this is a logical error" << endl;
@@ -1945,15 +1960,16 @@ public:
     }
 
 private:
-    void writeQuadruple(OpCode opcode, string val1, string val2, string val3)
+    void writeQuadruple(OpCode opcode, int val1, int val2, int val3)
     {
         MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << val3 << endl;
     }
-    // invalid opcode is for instructions with only three operands.
-    void writeQuadruple(OpCode opcode, int val1, int val2, OpCode val3 = OpCode::INVALID)
+    // this is for stuff with options. invalid opcode is for instructions with only three operands.
+    void writeQuadruple(OpCode opcode, int val1, int val2, OpCode val3)
     {
         MCFile << opcode << "\t" << val1 << "\t" << val2 << "\t" << (val3 == OpCode::INVALID ? "" : to_string(static_cast<int>(val3))) << endl;
     }
+    // this is for print.
     void writeQuadruple(OpCode opcode, int val1)
     {
         MCFile << opcode << "\t" << val1 << "\t" << endl;
@@ -1986,6 +2002,30 @@ class VirtualMachine
     {
         return dataMemory[source / 4];
     }
+    void ALU(array<int, 4> quadruple)
+    {
+        auto opcode = static_cast<OpCode>(quadruple[0]);
+        auto dest = quadruple[1];
+        auto operand1 = dataMemory[quadruple[2] / 4];
+        auto operand2 = dataMemory[quadruple[3] / 4];
+        switch (opcode)
+        {
+        case OpCode::ADD:
+            store(operand1 + operand2, dest, OpCode::LITERAL_ASSIGNMENT);
+            break;
+        case OpCode::SUBTRACT:
+            store(operand1 - operand2, dest, OpCode::LITERAL_ASSIGNMENT);
+            break;
+        case OpCode::PRODUCT:
+            store(operand1 * operand2, dest, OpCode::LITERAL_ASSIGNMENT);
+            break;
+        case OpCode::DIVIDE:
+            store(operand1 / operand2, dest, OpCode::LITERAL_ASSIGNMENT);
+            break;
+        default:
+            break;
+        }
+    }
 
     void execute(array<int, 4> quadruple)
     {
@@ -2000,6 +2040,12 @@ class VirtualMachine
             store(source, destination, option);
             break;
         }
+        case OpCode::ADD:
+        case OpCode::SUBTRACT:
+        case OpCode::PRODUCT:
+        case OpCode::DIVIDE:
+            ALU(quadruple);
+            break;
         case OpCode::PRINT:
             cout << retrieve(quadruple[1]);
             break;
@@ -2053,10 +2099,10 @@ int main()
     // }
     // lexical analyzer is called by teh parser.
 
-    // Parser parser = Parser("test.go");
-    // parser.parse();
-    // MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
-    // machineCodeGenerator.generate();
+    Parser parser = Parser("test.go");
+    parser.parse();
+    MachineCodeGenerator machineCodeGenerator = MachineCodeGenerator();
+    machineCodeGenerator.generate();
     VirtualMachine vm;
     vm.execute();
     return 0;
