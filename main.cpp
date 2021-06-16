@@ -975,7 +975,7 @@ public:
             cout << "Unexpected toekn " << Token::getOutputMapping(RO.token) << " in if, this is likely a logical error" << endl;
         }
         writeLineNumber();
-        outFile << "if " << G1 << " " << Token::getROLexemeOutput(RO) << " " << G2 << " goto " << GetNextLineNumber() + 1 << endl;
+        outFile << "if " << G1 << Token::getROLexemeOutput(RO) << G2 << " goto" << GetNextLineNumber() + 1 << endl;
         return returner;
     }
     int writeGoToGetLineNumber()
@@ -1390,7 +1390,7 @@ private:
             break;
         }
         default:
-            MatchToken(functionName, Token());
+            Mark(Token());
             break;
         }
         LeaveFunction();
@@ -1785,6 +1785,7 @@ private:
         if (token.token == TokenName::NULLPROD)
         {
             cout << "Trying to match null production this should probably be marked instead" << endl;
+            return token;
         }
         auto consumeToken = tokenReader.consumeNextToken();
         if (token.CheckOnlyTokenType(consumeToken))
@@ -1858,10 +1859,29 @@ enum class OpCode
     PRODUCT,
     DIVIDE,
     INPUT,
+    LESS_TAHN,
+    LESS_THAN_EQUAL,
+    GREATER_THAN,
+    GREATER_THAN_EQUAL,
+    EQUAL,
+    NOT_EQUAL,
+    GOTO,
     INVALID
 };
 
-const map<string, OpCode> arithmeticMapper = {{"+", OpCode::ADD}, {"-", OpCode::SUBTRACT}, {"*", OpCode::PRODUCT}, {"/", OpCode::DIVIDE}};
+const map<string, OpCode> arithmeticOpCodeMapper = {
+    {"+", OpCode::ADD},
+    {"-", OpCode::SUBTRACT},
+    {"*", OpCode::PRODUCT},
+    {"/", OpCode::DIVIDE}};
+
+const map<string, OpCode> relationalOpCodeMapper = {
+    {"=", OpCode::EQUAL},
+    {"!=", OpCode::NOT_EQUAL},
+    {">=", OpCode::GREATER_THAN_EQUAL},
+    {"<=", OpCode::LESS_THAN_EQUAL},
+    {">", OpCode::GREATER_THAN},
+    {"<", OpCode::LESS_TAHN}};
 std::ostream &operator<<(std::ostream &os, OpCode opcode)
 {
     return os << static_cast<int>(opcode);
@@ -1889,6 +1909,7 @@ map<string, int> getTranslatorSymbolTable()
     }
     return symTable;
 }
+
 class MachineCodeGenerator
 {
     ifstream TACFile;
@@ -1921,11 +1942,15 @@ public:
                 continue;
             }
             string strippedLine = originalLine.substr(originalLine.find(")") + 1);
-            regex expressionRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*)(-|\\+|\\*|/)([_a-zA-Z]\\w*);");
-            regex variableAssignmentRegex("([_a-zA-Z]\\w*)=([_a-zA-Z]\\w*);");
-            regex literalAssignmentRegex("([_a-zA-Z]\\w*)=(\\d+);");
-            regex printRegex("print\\(([_a-zA-Z]\\w*)\\);");
-            regex inputRegex("in>>([_a-zA-Z]\\w*)");
+
+            const string variableRegex = "([_a-zA-Z]\\w*)";
+            regex expressionRegex(variableRegex + "=" + variableRegex + "(-|\\+|\\*|/)" + variableRegex + ";");
+            regex variableAssignmentRegex(variableRegex + "=" + variableRegex + ";");
+            regex literalAssignmentRegex(variableRegex + "=(\\d+);");
+            regex printRegex("print\\(" + variableRegex + "\\);");
+            regex inputRegex("in>>" + variableRegex + ";");
+            regex ifRegex("if " + variableRegex + "(=)" + variableRegex + " goto(\\d+);");
+            regex gotoRefex("goto(\\d+);");
             smatch matches;
 
             strippedLine += ";"; // doing this beacause otherwsie regex matches half expressions.
@@ -1957,7 +1982,20 @@ public:
                 string var1 = matches[2];
                 string op = matches[3];
                 string var2 = matches[4];
-                writeQuadruple(arithmeticMapper.find(op)->second, symTable[lefthand], symTable[var1], symTable[var2]);
+                writeQuadruple(arithmeticOpCodeMapper.find(op)->second, symTable[lefthand], symTable[var1], symTable[var2]);
+            }
+            else if (regex_search(strippedLine, matches, ifRegex))
+            {
+                string lefthand = matches[1];
+                string op = matches[2];
+                string righthand = matches[3];
+                string lineNumber = matches[4];
+                writeQuadruple(relationalOpCodeMapper.find(op)->second, symTable[lefthand], symTable[righthand], stoi(lineNumber));
+            }
+            else if (regex_search(strippedLine, matches, gotoRefex))
+            {
+                int lineNumber = stoi(matches[1]);
+                writeQuadruple(OpCode::GOTO, lineNumber);
             }
             else
             {
@@ -1988,6 +2026,9 @@ class VirtualMachine
     ifstream machineCode;
     map<string, int> symTable = getTranslatorSymbolTable();
     vector<int> dataMemory;
+    vector<array<int, 4>> programMemory;
+    int programCounter = 1;
+
     void store(int source, int destination, OpCode option)
     {
         destination = destination / 4;
@@ -2013,8 +2054,8 @@ class VirtualMachine
     {
         auto opcode = static_cast<OpCode>(quadruple[0]);
         auto dest = quadruple[1];
-        auto operand1 = dataMemory[quadruple[2] / 4];
-        auto operand2 = dataMemory[quadruple[3] / 4];
+        auto operand1 = retrieve(quadruple[2]);
+        auto operand2 = retrieve(quadruple[3]);
         switch (opcode)
         {
         case OpCode::ADD:
@@ -2034,6 +2075,37 @@ class VirtualMachine
         }
     }
 
+    bool LCU(array<int, 4> quadruple)
+    {
+        auto opcode = static_cast<OpCode>(quadruple[0]);
+        auto lefthand = retrieve(quadruple[1]);
+        auto righthand = retrieve(quadruple[2]);
+
+        bool condition = false;
+        switch (opcode)
+        {
+        case OpCode::EQUAL:
+            condition = lefthand == righthand;
+            break;
+        case OpCode::NOT_EQUAL:
+            condition = lefthand != righthand;
+            break;
+        case OpCode::LESS_TAHN:
+            condition = lefthand < righthand;
+            break;
+        case OpCode::LESS_THAN_EQUAL:
+            condition = lefthand <= righthand;
+        case OpCode::GREATER_THAN:
+            condition = lefthand > righthand;
+            break;
+        case OpCode::GREATER_THAN_EQUAL:
+            condition = lefthand >= righthand;
+            break;
+        default:
+            break;
+        }
+        return condition;
+    }
     void execute(array<int, 4> quadruple)
     {
         auto opcode = static_cast<OpCode>(quadruple[0]);
@@ -2061,6 +2133,20 @@ class VirtualMachine
             cin >> temp;
             store(temp, quadruple[1], OpCode::LITERAL_ASSIGNMENT);
             break;
+        case OpCode::EQUAL:
+        case OpCode::NOT_EQUAL:
+        case OpCode::GREATER_THAN:
+        case OpCode::GREATER_THAN_EQUAL:
+        case OpCode::LESS_TAHN:
+        case OpCode::LESS_THAN_EQUAL:
+            if (LCU(quadruple))
+            {
+                programCounter = quadruple[3] - 1;
+            }
+            break;
+        case OpCode::GOTO:
+            programCounter = quadruple[1] - 1;
+            break;
         default:
             cout << "Invalid opcode " << opcode << endl;
             break;
@@ -2076,9 +2162,6 @@ public:
             cout << "Could not open machine code in virtual machine" << endl;
         }
         dataMemory.resize(symTable.size());
-    }
-    void execute()
-    {
         while (!machineCode.eof())
         {
             string line;
@@ -2093,7 +2176,16 @@ public:
             {
                 quadrupleStream >> quadruple[i];
             }
-            execute(quadruple);
+            programMemory.push_back(quadruple);
+        }
+    }
+    void execute()
+    {
+        // program counter is 1.indexed.
+        while (programCounter <= programMemory.size())
+        {
+            execute(programMemory[programCounter - 1]);
+            programCounter++;
         }
     }
 };
