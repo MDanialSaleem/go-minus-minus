@@ -1358,7 +1358,7 @@ private:
         }
         LeaveFunction();
     }
-    void H()
+    void H(int ctrl)
     {
         const string functionName = "H";
         EnterFunction(functionName);
@@ -1379,14 +1379,13 @@ private:
             auto secondGVal = G();
             MatchToken(functionName, TokenName::DECLARATION);
             translator.WriteIfGetLineNumber(firstGVal, ROToken, secondGVal);
-            auto cFalse = translator.writeGoToGetLineNumber();
+            auto hFalse = translator.writeGoToGetLineNumber();
             MatchToken(functionName, TokenName::OPEN_BRACES);
             B();
-            auto C_Next = translator.writeGoToGetLineNumber();
-            translator.backpatch(cFalse, translator.GetNextLineNumber());
             MatchToken(functionName, TokenName::CLOSE_BRACES);
-            H();
-            translator.backpatch(C_Next, translator.GetNextLineNumber());
+            translator.writeGoToGetLineNumber(ctrl);
+            translator.backpatch(hFalse, translator.GetNextLineNumber());
+            H(ctrl);
             break;
         }
         default:
@@ -1394,6 +1393,7 @@ private:
             break;
         }
         LeaveFunction();
+        return;
     }
     void C()
     {
@@ -1409,9 +1409,10 @@ private:
         MatchToken(functionName, TokenName::OPEN_BRACES);
         B();
         auto C_Next = translator.writeGoToGetLineNumber();
+        auto H_Ctrl = C_Next;
         translator.backpatch(cFalse, translator.GetNextLineNumber());
         MatchToken(functionName, TokenName::CLOSE_BRACES);
-        H();
+        H(H_Ctrl);
         translator.backpatch(C_Next, translator.GetNextLineNumber());
         LeaveFunction();
     }
@@ -1949,7 +1950,7 @@ public:
             regex literalAssignmentRegex(variableRegex + "=(\\d+);");
             regex printRegex("print\\(" + variableRegex + "\\);");
             regex inputRegex("in>>" + variableRegex + ";");
-            regex ifRegex("if " + variableRegex + "(=)" + variableRegex + " goto(\\d+);");
+            regex ifRegex("if " + variableRegex + "(=|!=|>|<|>=|<=)" + variableRegex + " goto(\\d+);");
             regex gotoRefex("goto(\\d+);");
             smatch matches;
 
@@ -1990,7 +1991,12 @@ public:
                 string op = matches[2];
                 string righthand = matches[3];
                 string lineNumber = matches[4];
-                writeQuadruple(relationalOpCodeMapper.find(op)->second, symTable[lefthand], symTable[righthand], stoi(lineNumber));
+                auto findROMapping = relationalOpCodeMapper.find(op);
+                if (findROMapping == relationalOpCodeMapper.end())
+                {
+                    cout << "could not find mapping for relational operator " << op << endl;
+                }
+                writeQuadruple(findROMapping->second, symTable[lefthand], symTable[righthand], stoi(lineNumber));
             }
             else if (regex_search(strippedLine, matches, gotoRefex))
             {
@@ -2080,7 +2086,6 @@ class VirtualMachine
         auto opcode = static_cast<OpCode>(quadruple[0]);
         auto lefthand = retrieve(quadruple[1]);
         auto righthand = retrieve(quadruple[2]);
-
         bool condition = false;
         switch (opcode)
         {
@@ -2095,6 +2100,7 @@ class VirtualMachine
             break;
         case OpCode::LESS_THAN_EQUAL:
             condition = lefthand <= righthand;
+            break;
         case OpCode::GREATER_THAN:
             condition = lefthand > righthand;
             break;
