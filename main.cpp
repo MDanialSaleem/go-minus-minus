@@ -869,10 +869,11 @@ class Translator
 private:
     string currentTemp = "a";
     ofstream outFile;
-    ofstream symbolTable;
+    ofstream symbolTableStream;
     int lineNumber = 1;
     vector<tuple<int, int>> backpatches;
     int address = 0;
+    map<string, bool> symbolTable; //only used to check if a variable is used before declaration.
 
 public:
     Translator()
@@ -882,12 +883,12 @@ public:
         {
             cout << "could not open translator file" << endl;
         }
-        symbolTable.open(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
-        if (!symbolTable.is_open())
+        symbolTableStream.open(TRANSLATOR_SYMBOL_TABLE_OUTPUT_FILE_NAME);
+        if (!symbolTableStream.is_open())
         {
             cout << "could not open  translator symbol table file" << endl;
         }
-        symbolTable
+        symbolTableStream
             << left
             << setw(20)
             << "Name"
@@ -925,8 +926,18 @@ public:
         outFile << lineNumber << ")";
         lineNumber++;
     }
+    void checkIdentifierDeclaration(string identifier)
+    {
+        if (symbolTable.find(identifier) == symbolTable.end())
+        {
+            cout << "Identifier " << identifier << " used without declaration" << endl;
+            exit(0);
+        }
+    }
     string WriteExpressionGetTemp(string value1, Token op, string value2)
     {
+        checkIdentifierDeclaration(value1);
+        checkIdentifierDeclaration(value2);
         auto allowedOperetos = {TokenName::PRODUCT, TokenName::PLUS, TokenName::MINUS, TokenName::DIVIDE};
         bool found = false;
         for (auto allowedOperator : allowedOperetos)
@@ -960,6 +971,7 @@ public:
     }
     void WriteAssignment(Token identifier, string value)
     {
+        checkIdentifierDeclaration(identifier.lexeme);
         if (identifier.token != TokenName::IDENTIFIER)
         {
             cout << "Unexpected toekn " << Token::getOutputMapping(identifier.token) << " in assignment, this is likely a logical error" << endl;
@@ -1064,14 +1076,15 @@ public:
     }
     void writeToSymbolTable(Token declaration, string ID)
     {
-        symbolTable << left
-                    << setw(20)
-                    << ID
-                    << left
-                    << setw(20)
-                    << Token::getOutputMapping(declaration)
-                    << getAddress(declaration)
-                    << endl;
+        symbolTable[ID] = true;
+        symbolTableStream << left
+                          << setw(20)
+                          << ID
+                          << left
+                          << setw(20)
+                          << Token::getOutputMapping(declaration)
+                          << getAddress(declaration)
+                          << endl;
     }
     void backpatch(int fromLineNumber, int toLineNumber)
     {
@@ -1878,7 +1891,7 @@ const map<string, OpCode> arithmeticOpCodeMapper = {
 
 const map<string, OpCode> relationalOpCodeMapper = {
     {"=", OpCode::EQUAL},
-    {"!=", OpCode::NOT_EQUAL},
+    {"/=", OpCode::NOT_EQUAL},
     {">=", OpCode::GREATER_THAN_EQUAL},
     {"<=", OpCode::LESS_THAN_EQUAL},
     {">", OpCode::GREATER_THAN},
@@ -1950,7 +1963,7 @@ public:
             regex literalAssignmentRegex(variableRegex + "=(\\d+);");
             regex printRegex("print\\(" + variableRegex + "\\);");
             regex inputRegex("in>>" + variableRegex + ";");
-            regex ifRegex("if " + variableRegex + "(=|!=|>|<|>=|<=)" + variableRegex + " goto(\\d+);");
+            regex ifRegex("if " + variableRegex + "(=|/=|>|<|>=|<=)" + variableRegex + " goto(\\d+);");
             regex gotoRefex("goto(\\d+);");
             smatch matches;
 
